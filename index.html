@@ -1,69 +1,2165 @@
 <!DOCTYPE html>
+<!-- File Galaxy — by Vlad Puzakov -->
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>file:// link test v2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>File Galaxy — filesystem visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  body { background: #05060d; color: #e9ecf4; font: 15px/1.6 system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; }
-  h1 { font-size: 20px; }
-  .step { background: #12141f; border: 1px solid #2a2d3d; border-radius: 10px; padding: 18px 20px; margin: 18px 0; }
-  .step h2 { margin: 0 0 8px; font-size: 14px; color: #ffcf5c; text-transform: uppercase; letter-spacing: .04em; }
-  a.linktest { color: #7dd3fc; word-break: break-all; display: inline-block; margin-top: 8px; }
-  button { background: #7dd3fc; color: #05060d; border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; font-size: 14px; }
-  input { width: 100%; box-sizing: border-box; background: #1c1f2e; color: #e9ecf4; border: 1px solid #2a2d3d; border-radius: 8px; padding: 10px 12px; font-family: monospace; font-size: 13px; }
-  #origin { font-family: monospace; color: #ffcf5c; }
-  .warn { color: #ff8b8b; }
-  .row { display: flex; gap: 8px; margin-top: 10px; }
-  .row button { flex: 0 0 auto; }
+  :root {
+    --void: #05060d;
+    --panel: rgba(12,15,28,0.62);
+    --panel-border: rgba(255,255,255,0.09);
+    --text: #eef0f8;
+    --text-dim: #8891a8;
+    --gold: #ffcf5c;
+    --cyan: #7dd3fc;
+    --radius: 12px;
+    --mono: ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', Menlo, Consolas, monospace;
+    --display: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--void); overflow: hidden;
+  }
+  body {
+    font-family: var(--display);
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #scene {
+    position: fixed; inset: 0; display: block;
+    width: 100%; height: 100%;
+    touch-action: none; cursor: grab;
+  }
+  #scene:active { cursor: grabbing; }
+
+  #ui {
+    position: fixed; inset: 0; z-index: 10;
+    pointer-events: none; user-select: none;
+  }
+  #ui .panel {
+    pointer-events: auto;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  #topbar {
+    position: absolute; top: 18px; left: 18px; right: 18px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; flex-wrap: wrap;
+  }
+
+  #title-block { padding: 14px 18px; min-width: 200px; }
+  #title-block h1 {
+    margin: 0; font-size: 14px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  #title-block .sub {
+    margin-top: 5px; font-size: 12px; color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  #title-block .sub #mode-label { color: var(--gold); }
+  #stats {
+    margin-top: 8px; font-family: var(--mono);
+    font-size: 11px; color: var(--text-dim); line-height: 1.6;
+  }
+  .warn { color: var(--gold); }
+
+  #controls-block { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .controls-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+  button.action {
+    font-family: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: 0.03em;
+    color: var(--text); background: var(--panel);
+    border: 1px solid var(--panel-border); border-radius: 10px;
+    padding: 10px 14px; cursor: pointer;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    transition: border-color .15s ease, transform .1s ease, box-shadow .15s ease;
+    pointer-events: auto;
+  }
+  button.action:hover {
+    border-color: rgba(255,207,92,0.55);
+    box-shadow: 0 0 0 1px rgba(255,207,92,0.15), 0 0 18px rgba(255,207,92,0.12);
+  }
+  button.action:active { transform: scale(0.96); }
+  button.action:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  button.action.primary {
+    background: linear-gradient(160deg, rgba(255,207,92,0.2), rgba(255,207,92,0.06));
+    border-color: rgba(255,207,92,0.42);
+  }
+  button.action:disabled {
+    opacity: 0.4; cursor: default; pointer-events: none;
+  }
+  button.action.on { color: var(--gold); border-color: rgba(255,207,92,0.42); }
+
+  .speed-box {
+    display: inline-flex; align-items: center; gap: 9px; padding: 8px 13px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.03em; color: var(--text-dim);
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    pointer-events: auto;
+  }
+  #spin-speed-val { font-family: var(--mono); min-width: 34px; text-align: right; color: var(--text); }
+  #spin-speed { -webkit-appearance: none; appearance: none; width: 96px; height: 20px; margin: 0; background: transparent; cursor: pointer; }
+  #spin-speed::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.16); }
+  #spin-speed::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.16); }
+  #spin-speed::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--cyan); border: none; box-shadow: 0 0 8px rgba(125,211,252,0.6); }
+  #spin-speed::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--cyan); border: none; box-shadow: 0 0 8px rgba(125,211,252,0.6); }
+  #spin-speed:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 4px; }
+
+  #privacy-note {
+    font-size: 10.5px; color: var(--text-dim); line-height: 1.4;
+    max-width: 340px; text-align: right;
+  }
+
+  /* Fades. Everything in the UI eases in and out instead of popping: when the UI is hidden or
+     shown, and when the info panel, help window and loading overlay open and close. Visibility
+     is transitioned too, with a delay: it flips to hidden only when a fade-out has finished and to
+     visible instantly on a fade-in (so focus() works at once), so faded things never take clicks and
+     nothing moves. The Hide UI button fades out like the rest but stays in its corner,
+     where hovering it fades it back in. */
+  #title-block, .controls-row > :not(#btn-hide-ui), #privacy-note, #legend, #btn-help, #btn-options {
+    opacity: 1; visibility: visible;
+    transition: opacity .35s ease, visibility 0s linear 0s, border-color .15s ease, transform .1s ease, box-shadow .15s ease;
+  }
+  #ui.ui-hidden #title-block, #ui.ui-hidden .controls-row > :not(#btn-hide-ui), #ui.ui-hidden #privacy-note,
+  #ui.ui-hidden #legend, #ui.ui-hidden #btn-help, #ui.ui-hidden #btn-options {
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s ease, visibility 0s linear .35s, border-color .15s ease, transform .1s ease, box-shadow .15s ease;
+  }
+  #ui.ui-hidden #info-panel { opacity: 0; visibility: hidden; transition: opacity .3s ease, transform .3s ease, visibility 0s linear .3s; }
+  #btn-hide-ui { transition: opacity .35s ease, border-color .15s ease, transform .1s ease, box-shadow .15s ease; }
+  #ui.ui-hidden #btn-hide-ui { opacity: 0; }
+  #ui.ui-hidden #btn-hide-ui:hover,
+  #ui.ui-hidden #btn-hide-ui:focus-visible { opacity: 1; }
+
+  /* HELP! sits to the left of Options; Options keeps the corner. */
+  #corner-buttons { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 8px; }
+
+  #help-overlay, #options-overlay, #notfound-overlay {
+    position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+    padding: 20px; background: rgba(5, 6, 13, 0.55);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); pointer-events: auto;
+    transition: opacity .3s ease, visibility 0s linear 0s;
+  }
+  #help-overlay.hidden, #options-overlay.hidden, #notfound-overlay.hidden { display: flex !important; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .3s ease, visibility 0s linear .3s; }
+  #help-overlay.hidden #help-card, #options-overlay.hidden #options-card, #notfound-overlay.hidden #notfound-card { transform: translateY(12px) scale(0.985); }
+  #help-card, #options-card, #notfound-card { position: relative; width: 100%; max-width: 580px; max-height: calc(100vh - 40px); overflow-y: auto; padding: 22px 26px 24px; pointer-events: auto; transition: transform .3s ease; }
+  #help-card h2, #options-card h2, #notfound-card h2 { margin: 0 0 2px; font-size: 13px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); }
+  #help-close, #options-close, #notfound-close {
+    position: absolute; top: 12px; right: 14px; width: 28px; height: 28px; padding: 0;
+    font-size: 20px; line-height: 1; color: var(--text-dim); background: transparent;
+    border: none; border-radius: 8px; cursor: pointer; pointer-events: auto;
+  }
+  #help-close:hover, #options-close:hover, #notfound-close:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+  .help-section { margin: 18px 0 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-dim); }
+  .help-row { display: flex; gap: 16px; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); font-size: 12.5px; line-height: 1.45; }
+  .help-key { flex: 0 0 196px; font-family: var(--mono); color: var(--cyan); }
+  .help-desc { color: var(--text); }
+  .help-credit { margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.06); text-align: center; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+
+  .options-hint { margin: 2px 0 10px; font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+  .opt-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); font-size: 12.5px; line-height: 1.45; }
+  .opt-label { color: var(--text); }
+  .key-btn, .key-fixed { min-width: 112px; padding: 5px 12px; font-family: var(--mono); font-size: 12px; text-align: center; }
+  .key-btn {
+    color: var(--cyan); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-border);
+    border-radius: 8px; cursor: pointer; pointer-events: auto;
+    transition: border-color .15s ease, background .15s ease, color .15s ease;
+  }
+  .key-btn:hover, .key-btn:focus-visible { border-color: rgba(125, 211, 252, 0.5); outline: none; }
+  .key-btn.capturing { color: var(--gold); border-color: rgba(255, 207, 92, 0.6); background: rgba(255, 207, 92, 0.08); }
+  .key-fixed { color: var(--text-dim); }
+  #hotkey-msg { min-height: 18px; margin-top: 10px; font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+  .options-actions { margin-top: 10px; display: flex; justify-content: flex-end; }
+
+  #legend {
+    position: absolute; left: 18px; bottom: 18px;
+    display: flex; flex-direction: column; gap: 7px;
+    padding: 13px 15px; font-size: 11.5px; color: var(--text-dim);
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 7px currentColor; flex: none; }
+
+
+  #info-panel {
+    position: absolute; right: 18px; bottom: 66px; width: 280px;
+    padding: 16px 18px 18px;
+    transition: opacity .3s ease, transform .3s ease, visibility 0s linear 0s;
+  }
+  #info-panel.hidden {
+    display: block !important; opacity: 0; visibility: hidden; transform: translateY(8px); pointer-events: none;
+    transition: opacity .3s ease, transform .3s ease, visibility 0s linear .3s;
+  }
+  #info-close {
+    pointer-events: auto;
+    position: absolute; top: 8px; right: 10px;
+    background: none; border: none; color: var(--text-dim);
+    font-size: 18px; cursor: pointer; line-height: 1; padding: 6px;
+  }
+  #info-close:hover { color: var(--text); }
+  .info-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 9px; }
+  .info-name { font-size: 16px; font-weight: 600; word-break: break-word; margin-bottom: 5px; padding-right: 18px; }
+  .info-path { font-family: var(--mono); font-size: 11px; color: var(--text-dim); word-break: break-all; margin-bottom: 11px; }
+  .info-row { font-family: var(--mono); font-size: 12px; color: var(--text); opacity: 0.88; margin-top: 4px; }
+  .info-open {
+    display: block; width: 100%; margin-top: 13px; padding: 8px 0;
+    font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; text-align: center;
+    color: var(--void); background: var(--cyan); border: none; border-radius: 8px;
+    cursor: pointer; pointer-events: auto; transition: filter .15s ease;
+  }
+  .info-open:hover, .info-open:focus-visible { filter: brightness(1.08); }
+  #notfound-card { max-width: 380px; }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(5,6,13,0.6); backdrop-filter: blur(4px);
+    transition: opacity .3s ease, visibility 0s linear 0s;
+  }
+  #loading.hidden { display: flex !important; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .3s ease, visibility 0s linear .3s; }
+  #loading-inner {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    text-align: center; max-width: 320px; padding: 0 20px;
+  }
+  #loading-spinner {
+    width: 20px; height: 20px; border-radius: 50%; flex: none;
+    border: 2px solid rgba(255,207,92,0.25); border-top-color: var(--gold);
+    animation: spin 0.8s linear infinite;
+  }
+  #loading-text {
+    font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--text-dim); line-height: 1.6;
+  }
+  #loading-cancel {
+    pointer-events: auto;
+    font-family: inherit; font-size: 11.5px; font-weight: 600;
+    color: var(--text-dim); background: none;
+    border: 1px solid var(--panel-border); border-radius: 8px;
+    padding: 7px 16px; cursor: pointer;
+    transition: border-color .15s ease, color .15s ease;
+  }
+  #loading-cancel:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 680px) {
+    #topbar { flex-direction: column; }
+    #controls-block { align-items: flex-start; width: 100%; }
+    .controls-row { justify-content: flex-start; }
+    #privacy-note { text-align: left; }
+    #info-panel { width: auto; left: 18px; right: 18px; }
+    .help-row { flex-direction: column; gap: 2px; }
+    .opt-row { gap: 10px; }
+    .help-key { flex-basis: auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #loading-spinner { animation: none; }
+  }
 </style>
 </head>
 <body>
-<h1>file:// link test v2 &mdash; type any path</h1>
+<noscript>This experience needs JavaScript enabled.</noscript>
 
-<p>This page's own address right now is: <span id="origin"></span></p>
-<p id="warning" class="warn"></p>
+<canvas id="scene"></canvas>
 
-<div class="step">
-  <h2>Any file or folder</h2>
-  <p>Paste or edit the full path below (Windows-style, e.g. <code>H:\Videos\clip.mp4</code> or already as a URL, e.g. <code>file:///H:/Videos/clip.mp4</code> &mdash; either is fine, this converts it for you).</p>
-  <input id="pathIn" value="H:\01.04.2026\00h00m00s-04h25m29s-kimknibble-480p30.ts" />
-  <div class="row">
-    <button id="updateLink">Update the link below</button>
+<div id="ui">
+  <div id="topbar">
+    <div class="panel" id="title-block">
+      <h1>File Galaxy</h1>
+      <div class="sub"><span id="mode-label">Demo galaxy</span></div>
+      <div id="stats"></div>
+    </div>
+    <div id="controls-block">
+      <div class="controls-row">
+        <button class="action primary" id="btn-folder" type="button">Select a folder</button>
+        <button class="action" id="btn-demo" type="button">Switch Demo Galaxy</button>
+        <button class="action" id="btn-hide-ui" type="button">Hide UI</button>
+      </div>
+      <div class="controls-row">
+        <button class="action" id="btn-load-map" type="button">Load map</button>
+        <button class="action" id="btn-save-map" type="button" disabled>Save map</button>
+        <button class="action" id="btn-reset" type="button">Recenter</button>
+      </div>
+      <div class="controls-row">
+        <button class="action on" id="btn-spin" type="button" aria-pressed="true">Spin: on</button>
+        <label class="speed-box">
+          <span>Speed</span>
+          <input id="spin-speed" type="range" min="0" max="100" step="1" value="59" aria-label="Spin speed">
+          <span id="spin-speed-val">1.0&times;</span>
+        </label>
+      </div>
+      <div id="privacy-note">Runs entirely in your browser locally: nothing is being sent over the network, no data is collected, and none of your files are being uploaded anywhere. Large drives may pause the app for some time before anything appears. If that happens, it's your browser scanning the file paths in order to create the visualization; it is not frozen. You can save the &ldquo;mapped&rdquo; data file of your drive or a folder, so you can load the generated galaxy instantly, instead of doing a full re-scan. Enjoy!</div>
+    </div>
   </div>
-  <a class="linktest" id="liveLink" href="#">(click "Update the link" first)</a>
-  <p>Click that link directly, then separately try the button version:</p>
-  <div class="row">
-    <button id="btnOpen">Open the same path via window.open()</button>
+
+  <div class="panel" id="legend"></div>
+
+
+  <div class="panel hidden" id="info-panel"></div>
+
+  <div id="corner-buttons">
+    <button class="action" id="btn-help" type="button">HELP!</button>
+    <button class="action" id="btn-options" type="button">Options</button>
   </div>
-  <p id="result"></p>
+
+  <div id="help-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="panel" id="help-card">
+      <button id="help-close" type="button" aria-label="Close">&times;</button>
+      <h2 id="help-title">Help</h2>
+
+      <div class="help-section">Mouse</div>
+      <div class="help-row"><span class="help-key">Hold LMB</span><span class="help-desc">Pan.</span></div>
+      <div class="help-row"><span class="help-key">Mouse wheel</span><span class="help-desc">Zoom In/Out.</span></div>
+      <div class="help-row"><span class="help-key">Hold RMB / Shift+LMB</span><span class="help-desc">Rotate.</span></div>
+      <div class="help-row"><span class="help-key">Alt + Mouse wheel</span><span class="help-desc">Change the spin animation speed.</span></div>
+      <div class="help-row"><span class="help-key">Click a star</span><span class="help-desc">Show file details.</span></div>
+
+      <div class="help-section">Keyboard</div>
+      <div id="help-keys"></div>
+
+      <div class="help-section">Buttons</div>
+      <div class="help-row"><span class="help-key">Recenter</span><span class="help-desc">Reset camera and zoom to default position and values.</span></div>
+      <div class="help-row"><span class="help-key">Spin</span><span class="help-desc">Start or stop the spin animation.</span></div>
+      <div class="help-row"><span class="help-key">Speed</span><span class="help-desc">Change the spin animation speed.</span></div>
+      <div class="help-row"><span class="help-key">Hide UI</span><span class="help-desc">Hides interface. You can hover the top right corner to bring the button back, or press the hotkey to get UI back.</span></div>
+      <div class="help-row"><span class="help-key">Options</span><span class="help-desc">Open the options menu, where you can change the hotkeys.</span></div>
+
+      <div class="help-credit">By Vlad Puzakov</div>
+    </div>
+  </div>
+
+  <div id="options-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="options-title">
+    <div class="panel" id="options-card">
+      <button id="options-close" type="button" aria-label="Close">&times;</button>
+      <h2 id="options-title">Options</h2>
+
+      <div class="help-section">Hotkeys</div>
+      <div class="options-hint">Click a key, then press the new one. Esc cancels. Changes are saved in this browser.</div>
+      <div id="hotkey-list"></div>
+      <div id="hotkey-msg" role="status" aria-live="polite"></div>
+      <div class="options-actions"><button class="action" id="hotkey-reset" type="button">Reset to defaults</button></div>
+    </div>
+  </div>
+
+  <div id="notfound-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="notfound-title">
+    <div class="panel" id="notfound-card">
+      <button id="notfound-close" type="button" aria-label="Close">&times;</button>
+      <h2 id="notfound-title">File not found</h2>
+      <div class="info-eyebrow" id="notfound-kind" style="margin-top:14px;"></div>
+      <div class="info-name" id="notfound-name"></div>
+      <div class="info-path" id="notfound-path"></div>
+      <div class="info-row" id="notfound-size"></div>
+      <div class="options-hint" id="notfound-reason" style="margin-top:14px;"></div>
+      <div class="options-actions"><button class="action" id="notfound-locate" type="button">Choose file to open&hellip;</button></div>
+    </div>
+  </div>
 </div>
 
-<p style="color:#8a8fa3; font-size:13px;">For each file you try, tell me: did it play/open straight away, did it prompt a download, or did nothing happen \u2014 and for which of the two methods (the link, or the button).</p>
+<div id="loading" class="hidden">
+  <div id="loading-inner">
+    <div id="loading-spinner"></div>
+    <div id="loading-text">Reading folder</div>
+    <button id="loading-cancel" type="button">Cancel</button>
+  </div>
+</div>
 
+<input type="file" id="folder-input" webkitdirectory directory multiple hidden style="display:none;" />
+<input type="file" id="relocate-input" hidden style="display:none;" />
+<input type="file" id="map-input" accept=".json,application/json" hidden style="display:none;" />
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-  document.getElementById('origin').textContent = window.location.href;
-  if (window.location.protocol !== 'file:') {
-    document.getElementById('warning').textContent = 'This page is NOT running as file:// right now. Save it to your computer and open it from there first.';
+(function () {
+  'use strict';
+
+  // ===== Config =====
+  var MAX_POINTS = 60000;
+  var LARGE_SELECTION_WARNING = 150000; // raw FileList length before we ask "are you sure?"
+
+  // Bumped whenever a new load is requested (folder pick, demo, or cancel) so
+  // any chunked work still in flight from a previous request can recognize
+  // it's stale and stop instead of racing the new one.
+  var loadGeneration = 0;
+  var isBusy = false;
+  var pickerPending = false;
+
+  var EXT_CATEGORIES = {
+    image: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'tiff', 'tif', 'heic', 'heif', 'ico', 'avif'],
+    video: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v', 'mpg', 'mpeg', '3gp'],
+    audio: ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma', 'opus', 'mid', 'midi'],
+    document: ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf', 'odt', 'xls', 'xlsx', 'csv', 'ppt', 'pptx', 'pages', 'key', 'numbers', 'epub'],
+    code: ['js', 'mjs', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'rb', 'php', 'html', 'htm', 'css', 'scss', 'sass', 'json', 'xml', 'yaml', 'yml', 'sh', 'bash', 'sql', 'swift', 'kt', 'vue', 'svelte', 'lua'],
+    archive: ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'iso', 'dmg', 'pkg']
+  };
+
+  var CATEGORY_COLORS = {
+    folder:   [1.000, 0.914, 0.659],
+    image:    [1.000, 0.439, 0.847],
+    video:    [1.000, 0.549, 0.259],
+    audio:    [0.290, 0.871, 0.502],
+    document: [0.984, 0.749, 0.141],
+    code:     [0.220, 0.741, 0.973],
+    archive:  [0.655, 0.545, 0.980],
+    other:    [0.580, 0.639, 0.722]
+  };
+
+  var CATEGORY_LABELS = {
+    folder: 'Folders', image: 'Images', video: 'Video', audio: 'Audio',
+    document: 'Documents', code: 'Code', archive: 'Archives', other: 'Other'
+  };
+
+  // ===== Utilities =====
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
   }
-  function toFileUrl(raw) {
-    raw = raw.trim();
-    if (/^file:\/\//i.test(raw)) return raw;
-    var p = raw.replace(/\\/g, '/').replace(/^\/+/, '');
-    return 'file:///' + p.split('/').map(encodeURIComponent).join('/').replace(/%3A/gi, ':');
+
+  function extOf(name) {
+    var i = name.lastIndexOf('.');
+    if (i <= 0) return '';
+    return name.slice(i + 1).toLowerCase();
   }
-  function currentUrl() { return toFileUrl(document.getElementById('pathIn').value); }
-  document.getElementById('updateLink').addEventListener('click', function () {
-    var url = currentUrl();
-    var a = document.getElementById('liveLink');
+
+  function categoryFor(name, isDir) {
+    if (isDir) return 'folder';
+    var ext = extOf(name);
+    for (var cat in EXT_CATEGORIES) {
+      if (EXT_CATEGORIES[cat].indexOf(ext) !== -1) return cat;
+    }
+    return 'other';
+  }
+
+  function humanSize(bytes) {
+    if (!bytes || bytes < 1) return '0 B';
+    if (bytes < 1024) return Math.round(bytes) + ' B';
+    var units = ['KB', 'MB', 'GB', 'TB', 'PB'];
+    var val = bytes;
+    var i = -1;
+    do { val /= 1024; i++; } while (val >= 1024 && i < units.length - 1);
+    return val.toFixed(val < 10 ? 2 : 1) + ' ' + units[i];
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // ===== Tree building from a real FileList (webkitdirectory) =====
+  //
+  // For a big drive this loop can have to walk hundreds of thousands of
+  // entries. Doing that in one synchronous pass blocks the main thread for
+  // the whole duration - the tab looks frozen and even the loading spinner
+  // stops animating, with nothing telling you whether it's working or stuck.
+  // Processing in chunks with a setTimeout between them keeps the browser
+  // responsive and lets us report real progress. `myGeneration` lets a newer
+  // request (a fresh folder pick, Demo Galaxy, or Cancel) invalidate a stale
+  // one still in flight.
+  var CHUNK_SIZE = 2000;
+
+  function buildTreeFromFilesAsync(fileList, onProgress, myGeneration) {
+    return new Promise(function (resolve, reject) {
+      var root = { name: 'This PC', isDir: true, children: new Map(), size: 0, path: '' };
+      var count = 1;
+      var truncated = false;
+      var i = 0;
+      var total = fileList.length;
+
+      function step() {
+        if (myGeneration !== loadGeneration) { reject(new Error('superseded')); return; }
+
+        var end = Math.min(i + CHUNK_SIZE, total);
+        for (; i < end; i++) {
+          var file = fileList[i];
+          var rel = file.webkitRelativePath || file.name;
+          var parts = rel.split('/').filter(Boolean);
+          var node = root;
+          var pathAcc = '';
+
+          for (var p = 0; p < parts.length; p++) {
+            var part = parts[p];
+            pathAcc = pathAcc ? pathAcc + '/' + part : part;
+            var isLast = p === parts.length - 1;
+
+            if (isLast) {
+              if (count >= MAX_POINTS) {
+                node.overflowCount = (node.overflowCount || 0) + 1;
+                node.overflowSize = (node.overflowSize || 0) + file.size;
+                truncated = true;
+              } else {
+                node.children.set(part, { name: part, isDir: false, size: file.size, path: pathAcc, fileRef: file });
+                count++;
+              }
+            } else {
+              var next = node.children.get(part);
+              if (!next) {
+                if (count >= MAX_POINTS) {
+                  node.overflowCount = (node.overflowCount || 0) + 1;
+                  truncated = true;
+                  break;
+                }
+                next = { name: part, isDir: true, children: new Map(), size: 0, path: pathAcc };
+                node.children.set(part, next);
+                count++;
+              }
+              node = next;
+            }
+          }
+        }
+
+        if (onProgress) onProgress(i, total);
+
+        if (i < total) {
+          setTimeout(step, 0);
+        } else {
+          computeStats(root);
+          resolve({ root: root, truncated: truncated });
+        }
+      }
+
+      step();
+    });
+  }
+
+  function computeStats(node) {
+    if (!node.isDir) return { size: node.size, files: 1, folders: 0 };
+    var size = node.overflowSize || 0;
+    var files = node.overflowCount || 0;
+    var folders = 0;
+    node.children.forEach(function (child) {
+      var s = computeStats(child);
+      size += s.size;
+      files += s.files;
+      folders += child.isDir ? 1 + s.folders : s.folders;
+    });
+    node.size = size;
+    node.fileCount = files;
+    node.folderCount = folders;
+    return { size: size, files: files, folders: folders };
+  }
+
+  // ===== Save / load a scanned map (so a huge drive only needs scanning once) =====
+  // Short keys keep the file smaller across tens of thousands of entries:
+  // n=name, d=isDir, c=children, s=size, oc/os=overflow count/size.
+  function serializeNode(node) {
+    var obj = { n: node.name, d: node.isDir };
+    if (node.isDir) {
+      var kids = [];
+      node.children.forEach(function (child) { kids.push(serializeNode(child)); });
+      obj.c = kids;
+      if (node.overflowCount) { obj.oc = node.overflowCount; obj.os = node.overflowSize || 0; }
+    } else {
+      obj.s = node.size;
+    }
+    return obj;
+  }
+
+  function deserializeNode(obj, parentPath) {
+    var path = parentPath ? parentPath + '/' + obj.n : obj.n;
+    if (obj.d) {
+      var node = { name: obj.n, isDir: true, children: new Map(), size: 0, path: path };
+      if (obj.c) {
+        for (var i = 0; i < obj.c.length; i++) {
+          var childObj = obj.c[i];
+          node.children.set(childObj.n, deserializeNode(childObj, path));
+        }
+      }
+      if (obj.oc) { node.overflowCount = obj.oc; node.overflowSize = obj.os || 0; }
+      return node;
+    }
+    return { name: obj.n, isDir: false, size: obj.s || 0, path: path };
+  }
+
+  function saveMapToFile(root, sourceLabel) {
+    var payload = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      sourceLabel: sourceLabel || 'Selected folder',
+      tree: serializeNode(root)
+    };
+    var json = JSON.stringify(payload);
+    var blob = new Blob([json], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
     a.href = url;
-    a.textContent = url;
-  });
-  document.getElementById('btnOpen').addEventListener('click', function () {
-    var url = currentUrl();
+    var safeName = String(sourceLabel || 'drive').replace(/[^a-z0-9_\-]+/gi, '_').slice(0, 40);
+    a.download = 'filegalaxy-map-' + safeName + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  function loadMapFromFile(file) {
+    return file.text().then(function (text) {
+      var payload = JSON.parse(text);
+      if (!payload || !payload.tree || !payload.tree.n) throw new Error('not a valid map file');
+      var root = deserializeNode(payload.tree, '');
+      computeStats(root);
+      return { root: root, sourceLabel: payload.sourceLabel || 'Loaded map', savedAt: payload.savedAt };
+    });
+  }
+
+  // Two demo shapes, switched by the demo button: a small galaxy (5 similar folders)
+  // and a big one (two giants plus lots of small folders: 2 arms, mini arms, overlays,
+  // branches).
+  var DEMO_KINDS = ['small', 'big'], demoIndex = 0;
+  var DEMO_LABELS = { small: 'Demo: Small Galaxy', big: 'Demo: Big Galaxy' };
+
+  // ===== Demo galaxy generator (deterministic, so it looks good every time) =====
+  function generateDemoTree(kind) {
+    var rand = mulberry32(kind === 'small' ? 777 : 4242);
+    function pick(arr) { return arr[Math.floor(rand() * arr.length)]; }
+    function randInt(a, b) { return Math.floor(a + rand() * (b - a + 1)); }
+
+    var TOP_FOLDERS = ['Documents', 'Pictures', 'Music', 'Videos', 'Downloads', 'Projects', 'Desktop', 'Work', 'Archive', 'Backups'];
+    var SUB_FOLDERS = ['2023', '2024', '2025', 'old', 'drafts', 'final', 'assets', 'src', 'build', 'raw', 'edited', 'client-work', 'personal', 'misc', 'notes', 'exports'];
+    var WORDS = ['summer', 'trip', 'report', 'invoice', 'session', 'mix', 'photo', 'scan', 'draft', 'plan', 'review', 'render', 'demo', 'sketch', 'call', 'meeting', 'backup', 'final', 'update', 'test'];
+
+    var FILE_KINDS = [
+      { cat: 'image', exts: ['jpg', 'png', 'heic'], min: 2e5, max: 12e6 },
+      { cat: 'video', exts: ['mp4', 'mov'], min: 2e7, max: 1.8e9 },
+      { cat: 'audio', exts: ['mp3', 'flac'], min: 3e6, max: 4e7 },
+      { cat: 'document', exts: ['pdf', 'docx', 'txt', 'xlsx', 'pptx'], min: 1e4, max: 5e6 },
+      { cat: 'code', exts: ['js', 'py', 'html', 'css', 'json'], min: 4e2, max: 8e4 },
+      { cat: 'archive', exts: ['zip', 'rar'], min: 1e6, max: 4e8 },
+      { cat: 'other', exts: ['dat', 'bin', 'log'], min: 1e3, max: 1e6 }
+    ];
+
+    function makeFile(parentPath) {
+      var kind = pick(FILE_KINDS);
+      var ext = pick(kind.exts);
+      var base = pick(WORDS);
+      if (rand() < 0.45) base += '_' + pick(WORDS);
+      if (rand() < 0.35) base += '_' + randInt(1, 999);
+      var name = base + '.' + ext;
+      var size = Math.round(kind.min + rand() * (kind.max - kind.min));
+      return { name: name, isDir: false, size: size, category: kind.cat, path: parentPath ? parentPath + '/' + name : name };
+    }
+
+    // Sized folders for the shaped demos: own files, subfolders, files per subfolder.
+    function makeSized(name, parentPath, files, subCount, subFiles) {
+      var path = parentPath ? parentPath + '/' + name : name;
+      var node = { name: name, isDir: true, children: new Map(), size: 0, path: path };
+      for (var i = 0; i < files; i++) {
+        var f = makeFile(path);
+        node.children.set('f' + i + '_' + f.name, f);
+      }
+      for (var j = 0; j < subCount; j++) {
+        var subName = pick(SUB_FOLDERS) + '_' + (j + 1);
+        var n = Math.max(3, Math.round(subFiles * (0.4 + rand() * 1.2)));
+        var grand = subFiles > 40 && rand() < 0.5 ? randInt(1, 3) : 0;
+        node.children.set('d' + j + '_' + subName, makeSized(subName, path, n, grand, Math.round(n * 0.4)));
+      }
+      return node;
+    }
+
+    var root = { name: 'This PC', isDir: true, children: new Map(), size: 0, path: '' };
+    function add(folder) { root.children.set(folder.name, folder); }
+
+    if (kind === 'small') {
+      ['Documents', 'Pictures', 'Music', 'Projects', 'Archive'].forEach(function (name) {
+        add(makeSized(name, '', randInt(30, 60), randInt(3, 5), 40));
+      });
+    } else {
+      add(makeSized('Photos', '', 2800, 12, 140));
+      add(makeSized('Projects', '', 2400, 10, 150));
+      for (var m = 0; m < 28; m++) add(makeSized(pick(TOP_FOLDERS) + '_' + (m + 1), '', randInt(90, 420), randInt(0, 3), 60));
+      for (var t = 0; t < 14; t++) add(makeSized(pick(WORDS) + '_tmp' + (t + 1), '', randInt(2, 12), 0, 0));
+    }
+
+    computeStats(root);
+    return root;
+  }
+
+  // ===== Layout: spiral-arm galaxy (step 13: tapered arms, dominant folders opened up) =====
+  //
+  // Every main folder rides a logarithmic-spiral ARM. Position along an arm is
+  // a running "star budget" cursor (c): a folder's own star first, then its
+  // loose files, then its sub-folders - so main folders sit near the core and
+  // deeper content trails toward the arm's tail. Arms are THICK where they start
+  // and taper toward the tail, like petals. Star density stays even because the
+  // cursor is tied to ribbon area: c * SPACING^2 = SQ * integral of width dr, so
+  // where an arm is thin it simply has to run longer per star. Later steps bend
+  // the budget (density, stacking, branches) without touching the geometry below.
+  function findEffectiveRoot(root) {
+    var node = root;
+    while (node.isDir && node.children.size === 1) {
+      var only = Array.from(node.children.values())[0];
+      if (!only.isDir) break; // never descend into a lone file
+      node = only;
+    }
+    return node;
+  }
+
+  // K and FLOOR are set per galaxy by setShape(numArms); R0, WS and LAM by fitShape().
+  var GAL = {
+    R0: 22,          // arm start radius (fitted per galaxy)
+    K: 3.2,          // winding: angle = phase + K * ln(r / R0), about 17 deg pitch like a real spiral
+    TUBE: 0.55,      // vertical thickness / lateral thickness, so arms read as tubes from the side
+    SPACING: 2.3,    // world units per star at normal density
+    MAX_ARMS: 10,
+    BRANCH_LOAD: 2500, // a heavy arm gets one small branch per this many stars (max 4)
+    BULGE_MAX: 300   // loose files of the root that may live in the core
+  };
+  var GAL_SP2 = GAL.SPACING * GAL.SPACING;
+
+  // Winding depends on how many arms share the disc: a couple of arms wind long and
+  // tight (Milky Way), many arms open up so the dark gaps between them survive
+  // (Spore). Fewer arms also taper harder (FLOOR = tail width / start width).
+  function setShape(n) {
+    GAL.K = n <= 2 ? 4.0 : (n <= 5 ? 3.2 : 2.5);
+    GAL.SQ = Math.sqrt(1 + GAL.K * GAL.K);        // arc length per unit of radius
+    GAL.FLOOR = n <= 3 ? 0.3 : 0.45;
+  }
+  setShape(5);
+
+  // Arm width tapers from WS at the start toward FLOOR * WS at the tail:
+  //   W(r) = WS * (FLOOR + (1 - FLOOR) * exp(-(r - R0) / LAM))
+  // Star capacity of the ribbon out to r is SQ * integral(W dr) / SPACING^2, which has a
+  // closed form, so budget and radius are exact inverses (Newton for radiusAt: the
+  // integral is concave and increasing, so it climbs monotonically from the left).
+  function widthAt(r) { return GAL.WS * (GAL.FLOOR + (1 - GAL.FLOOR) * Math.exp(-(r - GAL.R0) / GAL.LAM)); }
+  function cursorAt(r) {
+    var x = Math.max(0, r - GAL.R0);
+    return GAL.SQ * GAL.WS * (GAL.FLOOR * x + (1 - GAL.FLOOR) * GAL.LAM * (1 - Math.exp(-x / GAL.LAM))) / GAL_SP2;
+  }
+  function radiusAt(c) {
+    var y = Math.max(0, c) * GAL_SP2 / (GAL.SQ * GAL.WS), x = y, f = GAL.FLOOR, L = GAL.LAM;
+    for (var i = 0; i < 10; i++) {
+      var e = Math.exp(-x / L);
+      var nx = x - (f * x + (1 - f) * L * (1 - e) - y) / (f + (1 - f) * e);
+      var done = Math.abs(nx - x) < 1e-6 * (1 + x);
+      x = nx;
+      if (done) break;
+    }
+    return GAL.R0 + x;
+  }
+
+  // Fit the arm geometry to this galaxy. S is the radius the heaviest arm (cRef stars)
+  // should reach, which follows from the ribbon area it needs. Everything scales with S:
+  // arms start at ~7% of S, are ~16% of S wide there and taper over ~28% of S, so a big
+  // drive is a scaled-up copy of a small one. Bases of neighbouring arms may overlap
+  // (petals, like a drawn spiral) but not into a solid disc, so with many arms the start
+  // width is capped by the gap between them. Then the arm has to run longer than S: find
+  // its real reach and refit around that so the taper still spans the whole arm.
+  function fitShape(cRef, nBulge, n) {
+    var need = cRef * GAL_SP2 / GAL.SQ;   // ribbon area / SQ the heaviest arm needs
+    var g = 0.16 * (GAL.FLOOR * 0.93 + (1 - GAL.FLOOR) * 0.27);   // profile integral in units of S^2
+    var S = Math.sqrt(need / g);
+    for (var it = 0; it < 6; it++) {
+      GAL.R0 = clamp(Math.max(0.07 * S, 1.6 * Math.sqrt(nBulge)), 14, 150);   // loose root files must not pack into a knot
+      var gap = 2 * Math.PI * GAL.R0 / (n * GAL.SQ);   // spacing between neighbouring arms at their start
+      GAL.WS = Math.max(6, Math.min(0.16 * S, 5 * gap));
+      GAL.LAM = 0.28 * S;
+      if (GAL.WS >= 0.16 * S - 1e-9) break;   // not capped: the ideal shape
+      var f = GAL.FLOOR, L = GAL.LAM, y = need / GAL.WS, x = y;
+      for (var j = 0; j < 20; j++) { var e = Math.exp(-x / L); x -= (f * x + (1 - f) * L * (1 - e) - y) / (f + (1 - f) * e); }
+      S = 0.5 * S + 0.5 * (GAL.R0 + x);
+    }
+  }
+  setShape(5);
+
+  function byCostDesc(a, b) { return b.cost - a.cost; }
+
+  // How many groups earn their own arm: up to MAX_ARMS, unless a couple of
+  // folders dwarf everything after them (Milky-Way mode). Then the big ones
+  // become the arms and the rest stack onto them end to end.
+  function majorArmCount(groups) {   // sorted heaviest first
+    var cap = Math.min(groups.length, GAL.MAX_ARMS), big = 0;
+    while (big < cap && groups[big].cost >= 0.25 * groups[0].cost) big++;   // sizeable next to the biggest
+    cap = Math.max(Math.min(cap, big), Math.min(2, groups.length));
+    for (var i = 2; i < cap; i++) {
+      if (groups[i].cost < 0.35 * groups[i - 1].cost) return i;
+    }
+    return cap;
+  }
+
+  function bulgePoint(rand) {
+    var a = rand() * Math.PI * 2, cz = rand() * 2 - 1, s = Math.sqrt(1 - cz * cz);
+    var rr = GAL.R0 * 0.85 * Math.pow(rand(), 0.75);
+    return [rr * s * Math.cos(a), rr * cz * 0.55, rr * s * Math.sin(a)];
+  }
+
+
+  // Unit-variance bell curve with bounded tails (sum of 4 uniforms).
+  function gauss(rand) { return (rand() + rand() + rand() + rand() - 2) * 1.732; }
+
+  // World position on an arm at budget c, with lateral offset u and vertical
+  // offset v (both in standard deviations of the arm's cross-section).
+  function armPoint(arm, c, u, v) {
+    var b = arm.branch;
+    if (b) {   // spur: same spiral as its host, but thin, stretched along it, peeling off to one side
+      var f = clamp((c - b.c0) / b.S, 0, 1);
+      c = b.c0 + (c - b.c0) * b.k + (b.off || 0);
+      u = u * b.thin + b.side * b.dMax * f;
+      v *= 0.6;
+    }
+    var r = radiusAt(warpC(arm, c));
+    var th = arm.phase + GAL.K * Math.log(r / GAL.R0);
+    var cs = Math.cos(th), sn = Math.sin(th);
+    var tx = cs - GAL.K * sn, tz = sn + GAL.K * cs;   // tangent of the spiral
+    var tl = Math.sqrt(tx * tx + tz * tz);
+    var w = 0.25 * widthAt(r);                     // lateral sigma
+    var h = w * GAL.TUBE * (1 + 1.4 * Math.exp(-r / (GAL.R0 * 2.2))); // vertical sigma, puffier near the bulge
+    return [r * cs - (tz / tl) * u * w, v * h, r * sn + (tx / tl) * u * w];
+  }
+
+  // Flat, heavy folders (lots of own files, few subfolders) stretch into a longer,
+  // thinner strand of their arm: same star density, more length, so the arm winds
+  // further instead of swelling into a blob. Small folders keep stretch = 1.
+  function stretchFor(own, nd) {
+    if (own < 1) return 1;
+    var flat = own / (own + 12 * nd);
+    return 1 + 1.2 * clamp(Math.log(own / 300) / Math.log(33), 0, 1) * flat;
+  }
+
+  // Area per star relative to normal: a folder with a handful of files spreads
+  // thin along its arm (a sparser sleeve); a huge one packs tight (super dense).
+  // The dense side is deliberately soft (min 0.6): zoom is what keeps dense
+  // sleeves pickable, not spacing.
+  function densFor(own) {
+    if (own < 1) return 1;
+    var sparse = 1.3 * clamp((10 - own) / 9, 0, 1);
+    var dense = 0.4 * clamp(Math.log(own / 300) / Math.log(17), 0, 1);
+    return 1 + sparse - dense;
+  }
+
+  // Budget units a folder's own files occupy along the arm.
+  function spanFor(own, nd) { return own * stretchFor(own, nd) * densFor(own); }
+
+  function fileGroup(files) {
+    return { files: files, stretch: stretchFor(files.length, 0), cost: spanFor(files.length, 0) };
+  }
+
+  function computeCost(node) {
+    if (!node.isDir) { node.cost = 1; return 1; }
+    var own = node.overflowCount ? 1 : 0, nd = 0, sub = 0;
+    node.children.forEach(function (ch) {
+      if (ch.isDir) { nd++; sub += computeCost(ch); } else { own++; }
+    });
+    node.cost = 1 + spanFor(own, nd) + sub;
+    return node.cost;
+  }
+
+  // Gentle per-arm density waves. Local star density along an arm swings between
+  // roughly 0.6x and 2.4x, leaving sparser "spots" and brighter knots instead of
+  // one flat ribbon. Monotone (derivative stays above 0.4) and pinned to 0 at the
+  // arm start so nothing lands inside the core.
+  function makeWarp(load, rand) {
+    var p1 = Math.max(load * 0.035, 6), p2 = Math.max(load * 0.014, 2.5);
+    var w = { p1: p1, p2: p2, a1: 0.4 * p1, a2: 0.18 * p2, f1: rand() * 6.283, f2: rand() * 6.283 };
+    w.off = w.a1 * Math.sin(w.f1) + w.a2 * Math.sin(w.f2);
+    return w;
+  }
+  function warpC(arm, c) {
+    var w = arm.warp;
+    return c + w.a1 * Math.sin(c / w.p1 + w.f1) + w.a2 * Math.sin(c / w.p2 + w.f2) - w.off;
+  }
+
+  function placeStar(node, arm, c, rand, spread) {
+    node.position = armPoint(arm, c, gauss(rand) * spread, gauss(rand) * spread);
+  }
+
+  // A folder's own files as one patch of its arm, spanning `span` budget units.
+  // Stretched patches become a thinner lane. Short patches that would smear into
+  // a stripe across the whole arm pull into a compact clump at a random lateral
+  // offset, so neighbouring folders read as separate star clusters.
+  function placePatch(files, arm, c0, span, own, stretch, rand) {
+    var lat;
+    if (stretch > 1.001) {
+      lat = 1 / stretch;
+    } else {
+      var arc = (radiusAt(c0 + span) - radiusAt(c0)) * GAL.SQ;
+      lat = clamp(0.35 + 0.65 * arc / widthAt(radiusAt(c0 + span / 2)), 0.35, 1);
+    }
+    var u0 = (rand() * 2 - 1) * (1 - lat) * 1.3;
+    files.forEach(function (f) {
+      f.position = armPoint(arm, c0 + rand() * span, u0 + gauss(rand) * lat, gauss(rand) * Math.max(lat, 0.5));
+    });
+  }
+
+  // A spur borrows its host arm's spiral and density waves. Thin lane (1/3 width)
+  // stretched 1/thin times along the host keeps star density normal; it drifts
+  // sideways up to dMax sigmas, so it reads as a small fork, not a second arm.
+  function makeBranch(host, c0, S, side) {
+    var thin = 0.35, k = 1 / thin;
+    var r0 = radiusAt(c0), r1 = radiusAt(c0 + S * k);
+    var sigma = 0.25 * widthAt(r0);
+    var dMax = clamp(0.2 * (r1 - r0) * GAL.SQ / sigma, 1.8, 4.5);
+    return { phase: host.phase, warp: host.warp, isBranch: true,
+             branch: { c0: c0, S: S, k: k, thin: thin, side: side, dMax: dMax } };
+  }
+
+  function placeFolder(node, arm, st, rand) {
+    var c0 = st.c;
+    placeStar(node, arm, c0, rand, 0.2);   // folder stars trace the arm's spine
+    st.c += 1;
+    var dirs = [], files = [];
+    node.children.forEach(function (ch) { (ch.isDir ? dirs : files).push(ch); });
+    var own = files.length + (node.overflowCount ? 1 : 0);
+    if (own) {
+      var span = spanFor(own, dirs.length);
+      placePatch(files, arm, st.c, span, own, stretchFor(own, dirs.length), rand);
+      st.c += span;
+    }
+
+    // Very heavy arms may sprout a few small, thin spurs. A folder with several
+    // subfolders lends its largest small one to a spur that peels off the arm
+    // instead of stretching the arm further. Spurs are capped in number and size
+    // and never nest, so the galaxy can't turn into a web.
+    var spur = null;
+    if (!arm.isBranch && arm.branches < arm.maxBr && dirs.length >= 2) {
+      var cap = Math.min(300, 0.04 * arm.load);
+      dirs.forEach(function (d) {
+        if (d.cost >= 25 && d.cost <= cap && (!spur || d.cost > spur.cost)) spur = d;
+      });
+      if (spur && st.c + spur.cost * 2.9 > arm.load * 0.97) spur = null;   // must end inside the arm
+    }
+    if (spur) {
+      arm.branches++;
+      placeFolder(spur, makeBranch(arm, st.c, spur.cost, arm.branches % 2 ? -1 : 1), { c: st.c }, rand);
+    }
+    dirs.forEach(function (d) { if (d !== spur) placeFolder(d, arm, st, rand); });
+
+    var rMid = radiusAt((c0 + st.c) / 2);
+    node.clusterR = Math.max(6, (radiusAt(st.c) - radiusAt(c0)) * GAL.SQ / 2 + widthAt(rMid) * 0.5);
+  }
+
+  // Real cluster extent for every folder, measured from where its stars ended up
+  // (centroid + spread). Arms, spurs, mini arms and overlays all bend the layout,
+  // so the budget-based estimate is only a first guess. Fly-to frames this instead.
+  function measureClusters(node) {   // returns [count, sum x, sum y, sum z, sum |p|^2]
+    var p = node.position;
+    var acc = [1, p[0], p[1], p[2], p[0] * p[0] + p[1] * p[1] + p[2] * p[2]];
+    if (!node.isDir) return acc;
+    node.children.forEach(function (ch) {
+      var a = measureClusters(ch);
+      for (var i = 0; i < 5; i++) acc[i] += a[i];
+    });
+    var n = acc[0], mx = acc[1] / n, my = acc[2] / n, mz = acc[3] / n;
+    node.clusterR = Math.max(6, 1.7 * Math.sqrt(Math.max(0, acc[4] / n - (mx * mx + my * my + mz * mz))));
+    return acc;
+  }
+
+  function layoutGalaxy(root) {
+    var eff = findEffectiveRoot(root);
+    var rand = mulberry32(90210);   // fixed seed: the same drive always gives the same galaxy
+    computeCost(eff);
+    eff.position = [0, 0, 0];
+
+    var groups = [], hubs = [];   // groups ride arms; hubs are folders opened up and parked in the core
+    function takeChildren(folder) {   // child folders become groups, loose files are returned
+      var fl = [];
+      folder.children.forEach(function (ch) {
+        if (ch.isDir) groups.push({ node: ch, cost: ch.cost }); else fl.push(ch);
+      });
+      return fl;
+    }
+    var loose = takeChildren(eff);
+    var bulgeFiles = loose.slice(0, GAL.BULGE_MAX);   // the root's own loose files fill the core (capped)
+    if (loose.length > GAL.BULGE_MAX) {
+      var surplus = loose.slice(GAL.BULGE_MAX);
+      groups.push(fileGroup(surplus));
+    }
+    groups.sort(byCostDesc);
+
+    // A galaxy needs at least 2 arms, and no folder should dwarf the rest: a lopsided
+    // drive would otherwise become one giant arm with a few stubs beside it. So while
+    // the biggest folder is more than twice the size of the next one (and big enough to
+    // matter) it is opened up: the folder itself parks in the core as a hub, and its
+    // subfolders (plus its loose files as one group) become the arms instead. This
+    // repeats through chains like Games > Steam > steamapps > common until the load
+    // spreads out. Balanced drives, like the demos, are left exactly as they were.
+    function opensUp() {
+      if (groups.length === 1) return true;
+      return groups.length > 1 && !!groups[0].node && groups[0].cost >= 400 && groups[0].cost > 2 * groups[1].cost;
+    }
+    for (var guard = 0; groups.length && opensUp() && guard < 16; guard++) {
+      var g0 = groups.shift();   // the heaviest: groups are kept sorted, heaviest first
+      if (g0.node) {
+        hubs.push(g0.node);
+        var own = takeChildren(g0.node);
+        if (own.length) groups.push(fileGroup(own));
+      } else if (g0.files.length > 1) {
+        var half = g0.files.length >> 1;
+        groups.push(fileGroup(g0.files.slice(0, half)), fileGroup(g0.files.slice(half)));
+      } else { groups.unshift(g0); break; }
+      groups.sort(byCostDesc);
+    }
+    groups.sort(byCostDesc);
+
+    var numArms = Math.max(1, majorArmCount(groups));
+    setShape(numArms);
+    var total = 0;
+    groups.forEach(function (g) { total += g.cost; });
+    // Tiny minors (past the arm-owning majors) overlay an existing arm instead of
+    // lengthening it, so a drive with lots of near-empty folders keeps its shape.
+    var small = Math.max(40, 0.06 * total / numArms);
+    var maxMini = clamp(numArms * 2, 2, 8), nMini = 0;
+    // Overlays: the smallest minors first, and never more than 20% of all stars, so a
+    // drive full of mid-size folders can't pile onto the arms as a blob. Those stack
+    // end to end instead. Minis then take the biggest of what is left.
+    var budget = 0.2 * total, used = 0;
+    for (var oi = groups.length - 1; oi >= numArms; oi--) {
+      if (groups[oi].cost > small || used + groups[oi].cost > budget) break;
+      groups[oi].overlay = true; used += groups[oi].cost;
+    }
+    for (var mj = numArms; mj < groups.length && nMini < maxMini; mj++) {
+      if (!groups[mj].overlay) { groups[mj].mini = true; nMini++; used += groups[mj].cost; }
+    }
+    total -= used;
+    var cRef = groups.length ? Math.max(groups[0].cost, total / numArms) : 1;
+    fitShape(cRef, bulgeFiles.length, numArms);
+
+    bulgeFiles.concat(hubs).forEach(function (n) { n.position = bulgePoint(rand); });
+    hubs.forEach(function (n) { n.clusterR = GAL.R0; });
+
+    var arms = [];
+    for (var j = 0; j < numArms; j++) {
+      arms.push({ phase: (j / numArms) * Math.PI * 2, load: 0, st: { c: 0 }, queue: [], ov: 0, gr: rand() });
+    }
+    // Heaviest first, each onto the lightest arm: the majors take one arm each,
+    // every group after them stacks onto the end of the lightest arm.
+    groups.forEach(function (g) {
+      if (g.overlay || g.mini) return;
+      var arm = arms[0];
+      for (var k = 1; k < arms.length; k++) { if (arms[k].load < arm.load) arm = arms[k]; }
+      arm.load += g.cost;
+      arm.queue.push(g);
+    });
+    // Second pass: an arm's length is known now, so its density waves can be scaled to it.
+    arms.forEach(function (arm) {
+      arm.warp = makeWarp(arm.load, rand);
+      arm.maxBr = clamp(Math.floor(arm.load / GAL.BRANCH_LOAD), 0, 4);
+      arm.branches = 0;
+      arm.queue.forEach(function (g) {
+        if (g.node) {
+          placeFolder(g.node, arm, arm.st, rand);
+        } else {
+          placePatch(g.files, arm, arm.st.c, g.cost, g.files.length, g.stretch, rand);
+          arm.st.c += g.cost;
+        }
+      });
+    });
+
+    // Overlays share space with what is already on an arm, giving a denser cluster
+    // that mixes several folders (like a thick band laid over one sleeve). Host =
+    // the arm with the most load per overlay; starts follow a golden-ratio walk so
+    // overlays spread along the arm instead of piling on one spot.
+    function placeOverlay(g) {
+      var host = arms[0];
+      arms.forEach(function (a) { if (a.load / (a.ov + 1) > host.load / (host.ov + 1)) host = a; });
+      host.ov++;
+      host.gr = (host.gr + 0.618034) % 1;
+      var st = { c: host.gr * Math.max(0, host.load - g.cost - 1) };
+      if (g.node) placeFolder(g.node, host, st, rand);
+      else placePatch(g.files, host, st.c, g.cost, g.files.length, g.stretch, rand);
+    }
+    groups.forEach(function (g) { if (g.overlay) placeOverlay(g); });
+
+    var maxR = GAL.R0;
+    arms.forEach(function (a) { maxR = Math.max(maxR, radiusAt(warpC(a, a.st.c))); });
+    eff.clusterR = maxR * 1.08;
+
+    // Mini arms (Milky Way style): thin partial arms parked between the main ones.
+    // They share the main spiral's winding but start part-way out, so they never
+    // touch the core, and being thin they run longer per star. A mini reuses the
+    // spur transform: budget c on the mini maps to main-scale c0m + c / thin.
+    var sep = 2 * Math.PI / (numArms * GAL.SQ);   // gap between neighbouring arms, as a fraction of radius
+    var wFrac = widthAt(GAL.R0 * 1.6) / (GAL.R0 * 1.6);
+    var frac = clamp((0.725 * wFrac + 0.02) / sep, 0.3, 0.5);   // keep clear of the neighbouring main arm
+    var cLo = cursorAt(GAL.R0 * 1.6);
+    var cHi = cursorAt(maxR * 0.92);
+    var mi = 0;
+    groups.forEach(function (g) {
+      if (!g.mini) return;
+      var thin = clamp(g.cost / (cHi - cLo), 0.45, 0.7), eq = g.cost / thin;
+      if (!(eq <= cHi - cLo)) { g.overlay = true; placeOverlay(g); return; }   // too heavy to be thin: overlay instead
+      var side = Math.floor(mi / numArms) % 2;
+      var m = { phase: ((mi % numArms) + (side ? 1 - frac : frac)) * 2 * Math.PI / numArms, isBranch: true,
+                branch: { c0: 0, S: 1, k: 1 / thin, thin: thin, side: 0, dMax: 0, off: cLo + rand() * (cHi - cLo - eq) } };
+      m.warp = makeWarp(Math.min(eq, 800), rand);
+      mi++;
+      if (g.node) placeFolder(g.node, m, { c: 0 }, rand);
+      else placePatch(g.files, m, 0, g.cost, g.files.length, g.stretch, rand);
+    });
+    measureClusters(eff);
+    eff.clusterR = maxR * 1.08;   // camera fit uses the disc radius, not the measured spread
+    return eff;
+  }
+
+  // ===== Flatten tree into render buffers =====
+  function sizeForNode(node) {
+    if (node.isDir) {
+      return clamp(2.0 + Math.log2(1 + (node.size || 0) / 5e6) * 0.55, 2.0, 7.5);
+    }
+    return clamp(0.55 + Math.log2(1 + (node.size || 0) / 1024) * 0.3, 0.55, 6.0);
+  }
+
+  function flattenTree(effRoot) {
+    var positions = [];
+    var colors = [];
+    var sizes = [];
+    var folderFlags = [];
+    var nodes = [];
+
+    function pushNode(node) {
+      positions.push(node.position[0], node.position[1], node.position[2]);
+      var cat = node.isDir ? 'folder' : (node.category || categoryFor(node.name, false));
+      node.category = cat;
+      var col = CATEGORY_COLORS[cat] || CATEGORY_COLORS.other;
+      colors.push(col[0], col[1], col[2]);
+      sizes.push(sizeForNode(node));
+      folderFlags.push(node.isDir ? 1 : 0);
+      nodes.push(node);
+    }
+
+    function visit(node) {
+      if (node !== effRoot) pushNode(node);
+      if (node.isDir) {
+        node.children.forEach(function (child) { visit(child); });
+        if (node.overflowCount) {
+          var overflowNode = {
+            name: '+' + node.overflowCount + ' more item' + (node.overflowCount === 1 ? '' : 's'),
+            isDir: false,
+            size: node.overflowSize || 0,
+            path: (node.path ? node.path + '/' : '') + '\u2026',
+            position: [
+              node.position[0] + (Math.random() - 0.5) * 3,
+              node.position[1] + (Math.random() - 0.5) * 3,
+              node.position[2] + (Math.random() - 0.5) * 3
+            ],
+            category: 'other',
+            isOverflow: true
+          };
+          pushNode(overflowNode);
+        }
+      }
+    }
+
+    visit(effRoot);
+
+    return {
+      positions: new Float32Array(positions),
+      colors: new Float32Array(colors),
+      sizes: new Float32Array(sizes),
+      folderFlags: new Float32Array(folderFlags),
+      nodes: nodes
+    };
+  }
+
+  // ===== Three.js scene =====
+  var VERTEX_SHADER = [
+    'attribute float aSize;',
+    'attribute float aIsFolder;',
+    'attribute vec3 aColor;',
+    'varying vec3 vColor;',
+    'varying float vIsFolder;',
+    'uniform float uTime;',
+    'uniform float uPixelRatio;',
+    'void main() {',
+    '  vColor = aColor;',
+    '  vIsFolder = aIsFolder;',
+    '  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);',
+    '  float pulse = aIsFolder > 0.5 ? (1.0 + 0.16 * sin(uTime * 1.6 + position.x * 0.08 + position.z * 0.08)) : 1.0;',
+    '  float sz = aSize * pulse;',
+    '  float maxPx = (aIsFolder > 0.5 ? 62.0 : 40.0) * uPixelRatio;',
+    '  gl_PointSize = min(sz * uPixelRatio * (240.0 / -mvPosition.z), maxPx);',
+    '  gl_Position = projectionMatrix * mvPosition;',
+    '}'
+  ].join('\n');
+
+  var FRAGMENT_SHADER = [
+    'varying vec3 vColor;',
+    'varying float vIsFolder;',
+    'void main() {',
+    '  vec2 uv = gl_PointCoord - vec2(0.5);',
+    '  float d = length(uv) * 2.0;',
+    '  float core = smoothstep(1.0, 0.0, d);',
+    '  float glow = pow(core, vIsFolder > 0.5 ? 1.3 : 2.1);',
+    '  if (glow < 0.02) discard;',
+    '  vec3 col = vColor * (vIsFolder > 0.5 ? 1.35 : 1.05);',
+    '  gl_FragColor = vec4(col, glow);',
+    '}'
+  ].join('\n');
+
+  var scene, camera, renderer, clock, raycaster;
+  var galaxyPoints = null;
+  var currentNodes = [];
+  var currentFitRadius = 360;
+  var lastRealRoot = null;
+  var lastSourceLabel = '';
+  var currentMeta = null;   // the { source, sourceLabel, truncated } of whatever galaxy is showing now
+  var cameraTarget = new THREE.Vector3(0, 0, 0);
+  var spherical = new THREE.Spherical(360, 0.82, 0.6);
+  var autoRotate = true;
+  var spinSpeed = 1;      // multiplier: 1x is a full turn in about two minutes
+  var lastFrameT = 0;
+  var currentCenter = null;   // the clickable galaxy centre (the core): not a file, so it is not in currentNodes
+
+  // Spin on/off. Touching the galaxy (drag, wheel, touch) still stops it so a star
+  // can be clicked while the view holds still; the button shows that and restarts it.
+  function setSpin(on) {
+    autoRotate = on;
+    var b = document.getElementById('btn-spin');
+    if (!b) return;
+    b.textContent = on ? 'Spin: on' : 'Spin: off';
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  // Spin speed lives in the slider, so the slider, the arrow keys and Alt + wheel always agree.
+  // Slider units 0..100: 0 = stopped, 1..100 = 0.1x..5x on a log scale (59 = 1x, the default).
+  //   - reaching 0 by any route turns the spin off;
+  //   - speeding up while the spin is off turns it on by itself;
+  //   - S and the Spin button are the quick stop / start: they start at the speed already set.
+  var speedUnits = 59, DEFAULT_SPEED_UNITS = 59;
+  function setSpeed(units) {
+    units = clamp(Math.round(units), 0, 100);
+    var faster = units > speedUnits;
+    speedUnits = units;
+    document.getElementById('spin-speed').value = units;
+    spinSpeed = units === 0 ? 0 : 0.1 * Math.pow(50, units / 100);
+    document.getElementById('spin-speed-val').textContent = spinSpeed.toFixed(1) + '\u00d7';
+    if (units === 0) setSpin(false);
+    else if (faster && !autoRotate) setSpin(true);
+  }
+  function nudgeSpeed(delta) { setSpeed(speedUnits + delta); }
+  function toggleSpin() {
+    if (autoRotate) setSpin(false);
+    else if (speedUnits === 0) setSpeed(DEFAULT_SPEED_UNITS);   // nothing to start at zero: go back to 1x (this also turns it on)
+    else setSpin(true);
+  }
+
+  // Hide / show the whole interface (the Hide UI button or H). The button stays in its corner
+  // at zero opacity and fades back in when hovered (see the CSS). The loading overlay lives
+  // outside the UI layer, so progress and its Cancel button stay visible while scanning.
+  var uiHidden = false;
+  function setUIHidden(hide) {
+    uiHidden = hide;
+    document.getElementById('ui').classList.toggle('ui-hidden', hide);
+    document.getElementById('btn-hide-ui').textContent = hide ? 'Show UI' : 'Hide UI';
+  }
+
+  // ===== Opening a file =====
+  //
+  // Read-only: a chosen file is only ever shown or handed to the browser's own download flow,
+  // the same as clicking a link to it. Nothing here can write, move, rename or delete anything.
+  var selectedNode = null;   // the node the info panel currently shows, so Enter knows what to act on
+
+  // A file's real bytes are only ever reachable through a live File object: one handed to this
+  // page by the browser during a folder scan (kept as node.fileRef), or one the person just chose
+  // by hand through relocateSelectedFile(). A loaded map or a demo item never has one, because a
+  // saved map is metadata only, and a demo item was never a real file.
+  function openFileBlob(file) {
+    var url = URL.createObjectURL(file);
     var win = window.open(url, '_blank');
-    document.getElementById('result').textContent = 'Tried: ' + url + ' \u2014 window.open() returned ' + (win ? 'a window reference.' : 'null (blocked immediately).') + ' Report what actually happened on screen.';
-  });
-  document.getElementById('updateLink').click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    if (!win) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+  }
+
+  function notFoundReason(node) {
+    if (currentMeta && currentMeta.source === 'map') return 'This galaxy was loaded from a saved map, which stores names and sizes but not the files themselves.';
+    if (currentMeta && currentMeta.source === 'folder') return 'This file\u2019s data is no longer available in this session \u2014 try choosing it below.';
+    if (currentMeta && currentMeta.source === 'demo') return 'This is a demo galaxy \u2014 its files aren\u2019t real, so there\u2019s nothing to open.';
+    return 'This file\u2019s data isn\u2019t available in this session.';
+  }
+
+  function openSelectedFile() {
+    var node = selectedNode;
+    if (!node || node.isDir || node.isOverflow) return;
+    if (node.fileRef) { openFileBlob(node.fileRef); return; }
+    document.getElementById('notfound-kind').textContent = 'FILE' + (node.category ? ' \u00b7 ' + node.category.toUpperCase() : '');
+    document.getElementById('notfound-name').textContent = node.name;
+    document.getElementById('notfound-path').textContent = node.path || '/';
+    document.getElementById('notfound-size').textContent = humanSize(node.size || 0);
+    document.getElementById('notfound-reason').textContent = notFoundReason(node);
+    showWindow('notfound');
+  }
+
+  // The "Choose file to open..." button: a real, visible file picker the person uses themselves.
+  // Nothing here guesses a path or reaches for anything they did not explicitly pick.
+  function relocateSelectedFile() {
+    if (!selectedNode || selectedNode.isDir || selectedNode.isOverflow) return;
+    document.getElementById('relocate-input').click();
+  }
+
+  var HOTKEY_STORAGE_KEY = 'filegalaxy.hotkeys.v1';
+  var HOTKEY_ACTIONS = [
+    { id: 'spin',     label: 'Start or stop the spin',    code: 'KeyS' },
+    { id: 'slower',   label: 'Spin slower',               code: 'ArrowLeft' },
+    { id: 'faster',   label: 'Spin faster',               code: 'ArrowRight' },
+    { id: 'recenter', label: 'Recenter',                  code: 'KeyR' },
+    { id: 'hideui',   label: 'Hide or show the UI',       code: 'KeyH' },
+    { id: 'options',  label: 'Open or close the options', code: 'KeyO' }
+  ];
+  // Keys that may be bound: letters, digits, numpad, arrows, Enter and friends, punctuation.
+  // Not Tab (keyboard navigation), Space (presses buttons), F-keys (browser functions), or Esc.
+  var HOTKEY_CODE_OK = /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Arrow(Left|Right|Up|Down)|Enter|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Comma|Period|Slash|Backquote|IntlBackslash)$/;
+  var hotkeys = {};
+  var capturingAction = null;   // the action whose key is being chosen in Options, or null
+
+  function labelForCode(code) {
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+    if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+    if (/^Numpad[0-9]$/.test(code)) return 'Num ' + code.slice(6);
+    var names = { ArrowLeft: 'Left arrow', ArrowRight: 'Right arrow', ArrowUp: 'Up arrow', ArrowDown: 'Down arrow',
+      PageUp: 'Page Up', PageDown: 'Page Down', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+      Backslash: '\\', IntlBackslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backquote: '`' };
+    return names[code] || code;
+  }
+  function defaultHotkeys() {
+    var m = {};
+    HOTKEY_ACTIONS.forEach(function (a) { m[a.id] = { code: a.code, label: labelForCode(a.code) }; });
+    return m;
+  }
+  function loadHotkeys() {
+    var stored = null;
+    try { stored = JSON.parse(window.localStorage.getItem(HOTKEY_STORAGE_KEY) || 'null'); } catch { stored = null; }
+    var result = defaultHotkeys();
+    if (stored && typeof stored === 'object') {
+      var candidate = defaultHotkeys();   // an action missing from the saved set keeps its default
+      HOTKEY_ACTIONS.forEach(function (a) {
+        var b = stored[a.id];
+        if (b && typeof b.code === 'string' && HOTKEY_CODE_OK.test(b.code)) {
+          candidate[a.id] = { code: b.code, label: (typeof b.label === 'string' && b.label) ? b.label.slice(0, 12) : labelForCode(b.code) };
+        }
+      });
+      var seen = {}, unique = true;
+      HOTKEY_ACTIONS.forEach(function (a) { var c = candidate[a.id].code; if (seen[c]) unique = false; seen[c] = true; });
+      if (unique) result = candidate;   // two actions on one key means the saved set is unusable
+    }
+    hotkeys = result;
+  }
+  function saveHotkeys() {
+    try { window.localStorage.setItem(HOTKEY_STORAGE_KEY, JSON.stringify(hotkeys)); return true; } catch { return false; }
+  }
+  function actionLabel(id) {
+    for (var i = 0; i < HOTKEY_ACTIONS.length; i++) if (HOTKEY_ACTIONS[i].id === id) return HOTKEY_ACTIONS[i].label;
+    return id;
+  }
+
+  function eventCode(e) { return e.code === 'NumpadEnter' ? 'Enter' : (e.code || ''); }
+  function actionForEvent(e) {
+    var code = eventCode(e);
+    for (var i = 0; i < HOTKEY_ACTIONS.length; i++) {
+      var id = HOTKEY_ACTIONS[i].id, b = hotkeys[id];
+      if (code && code !== 'Unidentified') {
+        if (b.code === code) return id;
+      } else if (e.key) {   // rare: an event without a code (some virtual keyboards)
+        if (e.key === b.code || (e.key.length === 1 && e.key.toLowerCase() === b.label.toLowerCase())) return id;
+      }
+    }
+    return null;
+  }
+
+  // Help: the Keyboard rows follow the current hotkeys, so they are drawn from the table.
+  function speedKeysLabel() {
+    var s = hotkeys.slower, f = hotkeys.faster;
+    if (s.code === 'ArrowLeft' && f.code === 'ArrowRight') return 'Left / Right arrow';
+    return s.label + ' / ' + f.label;
+  }
+  function renderHelpKeys() {
+    var host = document.getElementById('help-keys');
+    var rows = [
+      [hotkeys.spin.label, 'Start or stop the spin animation.'],
+      [speedKeysLabel(), 'Change the spin animation speed.'],
+      [hotkeys.recenter.label, 'Reset camera and zoom to default position and values.'],
+      [hotkeys.hideui.label, 'Hide or show the UI.'],
+      [hotkeys.options.label, 'Open or close the options menu.'],
+      ['Esc', 'Close or open the help panel.']
+    ];
+    host.textContent = '';
+    rows.forEach(function (r) {
+      var row = document.createElement('div'), k = document.createElement('span'), d = document.createElement('span');
+      row.className = 'help-row'; k.className = 'help-key'; d.className = 'help-desc';
+      k.textContent = r[0]; d.textContent = r[1];
+      row.appendChild(k); row.appendChild(d); host.appendChild(row);
+    });
+  }
+
+  // Options: one row per action, with a button showing its key. Click it, then press the new key.
+  function setHotkeyMsg(text) { document.getElementById('hotkey-msg').textContent = text; }
+  function renderHotkeyList() {
+    var host = document.getElementById('hotkey-list');
+    host.textContent = '';
+    HOTKEY_ACTIONS.forEach(function (a) {
+      var row = document.createElement('div'), label = document.createElement('span'), btn = document.createElement('button');
+      row.className = 'opt-row'; label.className = 'opt-label'; label.textContent = a.label;
+      btn.type = 'button'; btn.className = 'key-btn'; btn.setAttribute('data-action', a.id);
+      if (capturingAction === a.id) { btn.classList.add('capturing'); btn.textContent = 'Press a key\u2026'; }
+      else btn.textContent = hotkeys[a.id].label;
+      btn.setAttribute('aria-label', a.label + ': ' + btn.textContent);
+      btn.addEventListener('click', function () { if (capturingAction === a.id) cancelCapture(); else startCapture(a.id); });
+      row.appendChild(label); row.appendChild(btn); host.appendChild(row);
+    });
+    var fixed = document.createElement('div'), fl = document.createElement('span'), fk = document.createElement('span');
+    fixed.className = 'opt-row'; fl.className = 'opt-label'; fl.textContent = 'Close a window, or open the help panel';
+    fk.className = 'key-fixed'; fk.textContent = 'Esc';
+    fixed.appendChild(fl); fixed.appendChild(fk); host.appendChild(fixed);
+  }
+  function focusKeyButton(id) {
+    var b = document.querySelector('#hotkey-list .key-btn[data-action="' + id + '"]');
+    if (b) b.focus();
+  }
+  function startCapture(id) {
+    capturingAction = id;
+    renderHotkeyList();
+    focusKeyButton(id);
+    setHotkeyMsg('Press the new key for \u201c' + actionLabel(id) + '\u201d. Esc cancels.');
+  }
+  function cancelCapture(silent) {
+    if (!capturingAction) return;
+    var id = capturingAction;
+    capturingAction = null;
+    if (silent) return;
+    renderHotkeyList();
+    focusKeyButton(id);
+    setHotkeyMsg('');
+  }
+  // While a key is being chosen this sees every keydown first; the app's own hotkeys are paused.
+  function captureKey(e) {
+    var code = eventCode(e);
+    if (e.key === 'Escape') { e.preventDefault(); cancelCapture(); return; }   // cancels the rebinding; the window stays open
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta' || e.key === 'AltGraph') return;   // a modifier on its own: keep waiting
+    e.preventDefault();
+    if (e.repeat) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) { setHotkeyMsg('Combinations with Ctrl, Alt or Cmd can\u2019t be used. Press a single key.'); return; }
+    if (!HOTKEY_CODE_OK.test(code)) { setHotkeyMsg('That key can\u2019t be used. Try a letter, a digit, an arrow or Enter.'); return; }
+    var label = (e.key && e.key.length === 1 && !/^Numpad/.test(code)) ? e.key.toUpperCase() : labelForCode(code);
+    var clash = null;
+    HOTKEY_ACTIONS.forEach(function (a) { if (a.id !== capturingAction && hotkeys[a.id].code === code) clash = a; });
+    if (clash) { setHotkeyMsg('\u201c' + label + '\u201d is already used for \u201c' + clash.label + '\u201d. Pick another key.'); return; }
+    var id = capturingAction;
+    hotkeys[id] = { code: code, label: label };
+    capturingAction = null;
+    var saved = saveHotkeys();
+    renderHotkeyList();
+    renderHelpKeys();
+    focusKeyButton(id);
+    setHotkeyMsg('\u201c' + actionLabel(id) + '\u201d is now ' + label + '.' + (saved ? '' : ' This browser blocks storage, so it will reset when the page reloads.'));
+  }
+  function resetHotkeys() {
+    capturingAction = null;
+    hotkeys = defaultHotkeys();
+    try { window.localStorage.removeItem(HOTKEY_STORAGE_KEY); } catch { /* storage blocked: nothing saved anyway */ }
+    renderHotkeyList();
+    renderHelpKeys();
+    setHotkeyMsg('Hotkeys are back to the defaults.');
+  }
+
+  // One window at a time. Opening one closes the other; closing returns focus to the button that opens it.
+  var WINDOWS = {
+    help:     { overlay: 'help-overlay',     close: 'help-close',     opener: 'btn-help',    render: function () { renderHelpKeys(); } },
+    options:  { overlay: 'options-overlay',  close: 'options-close',  opener: 'btn-options', render: function () { renderHotkeyList(); setHotkeyMsg(''); } },
+    notfound: { overlay: 'notfound-overlay', close: 'notfound-close', opener: 'info-open-btn', render: function () {} }
+  };
+  var openWin = null;
+  function showWindow(name) {
+    if (openWin === name) return;
+    if (openWin) hideWindow(false);
+    var w = WINDOWS[name];
+    w.render();
+    openWin = name;
+    document.getElementById(w.overlay).classList.remove('hidden');
+    document.getElementById(w.close).focus();
+  }
+  function hideWindow(refocus) {
+    if (!openWin) return;
+    cancelCapture(true);
+    var w = WINDOWS[openWin];
+    document.getElementById(w.overlay).classList.add('hidden');
+    openWin = null;
+    var opener = refocus && document.getElementById(w.opener);
+    if (opener) opener.focus(); else if (refocus) document.body.focus();
+  }
+  function openHelp() { showWindow('help'); }
+  function closeHelp() { if (openWin === 'help') hideWindow(true); }
+  function openOptions() { showWindow('options'); }
+  function closeOptions() { if (openWin === 'options') hideWindow(true); }
+  function closeNotFound() { if (openWin === 'notfound') hideWindow(true); }
+  var isDragging = false;
+  var dragButton = 0;
+  var dragMoved = false;
+  var lastX = 0, lastY = 0;
+  var flyAnimId = null;
+
+  function initScene() {
+    var canvas = document.getElementById('scene');
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 24000);
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x05060d, 1);
+
+    addBackgroundStars();
+    addCoreGlow();
+
+    raycaster = new THREE.Raycaster();
+    raycaster.params.Points = { threshold: 3.4 };
+    clock = new THREE.Clock();
+
+    updateCameraPosition();
+    bindInteraction(canvas);
+    window.addEventListener('resize', onResize);
+    requestAnimationFrame(animate);
+  }
+
+  function addBackgroundStars() {
+    var n = 2600;
+    var pos = new Float32Array(n * 3);
+    for (var i = 0; i < n; i++) {
+      var r = 3200 + Math.random() * 5000;
+      var theta = Math.random() * Math.PI * 2;
+      var phi = Math.acos(2 * Math.random() - 1);
+      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = r * Math.cos(phi);
+      pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    var mat = new THREE.PointsMaterial({
+      color: 0xaebbff, size: 1.3, sizeAttenuation: true,
+      transparent: true, opacity: 0.55, depthWrite: false
+    });
+    scene.add(new THREE.Points(geo, mat));
+  }
+
+  function makeGlowTexture() {
+    var size = 128;
+    var canvasEl = document.createElement('canvas');
+    canvasEl.width = size; canvasEl.height = size;
+    var ctx = canvasEl.getContext('2d');
+    var grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.22, 'rgba(255,238,196,0.85)');
+    grad.addColorStop(1, 'rgba(255,238,196,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(canvasEl);
+  }
+
+  function addCoreGlow() {
+    var core = new THREE.Mesh(
+      new THREE.SphereGeometry(3.2, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfff3d6 })
+    );
+    scene.add(core);
+
+    var sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: makeGlowTexture(), color: 0xffe9a8, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    sprite.scale.set(46, 46, 1);
+    scene.add(sprite);
+  }
+
+  function buildGalaxyPoints(flat) {
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(flat.positions, 3));
+    geo.setAttribute('aColor', new THREE.BufferAttribute(flat.colors, 3));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(flat.sizes, 1));
+    geo.setAttribute('aIsFolder', new THREE.BufferAttribute(flat.folderFlags, 1));
+
+    var mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) }
+      },
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: FRAGMENT_SHADER,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+
+    return new THREE.Points(geo, mat);
+  }
+
+  // ===== Camera controls (RTS-style pan + orbit + zoom) =====
+  function updateCameraPosition() {
+    var offset = new THREE.Vector3().setFromSpherical(spherical);
+    camera.position.copy(cameraTarget).add(offset);
+    camera.lookAt(cameraTarget);
+  }
+
+  function panByWorld(rightAmt, forwardAmt) {
+    var theta = spherical.theta;
+    var forwardX = -Math.sin(theta);
+    var forwardZ = -Math.cos(theta);
+    var rightX = Math.cos(theta);
+    var rightZ = -Math.sin(theta);
+    cameraTarget.x += rightX * rightAmt + forwardX * forwardAmt;
+    cameraTarget.z += rightZ * rightAmt + forwardZ * forwardAmt;
+  }
+
+  function panByPixels(dx, dy) {
+    var speed = spherical.radius * 0.0017;
+    panByWorld(-dx * speed, dy * speed);
+  }
+
+  function zoomBy(deltaY) {
+    var factor = Math.pow(1.0015, deltaY);
+    spherical.radius = clamp(spherical.radius * factor, 3, 9000);
+  }
+
+  function touchDistance(touches) {
+    var dx = touches[0].clientX - touches[1].clientX;
+    var dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function bindInteraction(canvas) {
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    canvas.addEventListener('mousedown', function (e) {
+      isDragging = true;
+      dragButton = e.button;
+      dragMoved = false;
+      lastX = e.clientX; lastY = e.clientY;
+      setSpin(false);
+    });
+
+    window.addEventListener('mousemove', function (e) {
+      if (!isDragging) return;
+      var dx = e.clientX - lastX;
+      var dy = e.clientY - lastY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
+
+      if (dragButton === 2 || e.shiftKey) {
+        spherical.theta -= dx * 0.0052;
+        spherical.phi = clamp(spherical.phi - dy * 0.0052, 0.1, 1.5);
+      } else {
+        panByPixels(dx, dy);
+      }
+      lastX = e.clientX; lastY = e.clientY;
+      updateCameraPosition();
+    });
+
+    window.addEventListener('mouseup', function (e) {
+      if (isDragging && !dragMoved && e.button === 0) handleClick(e.clientX, e.clientY);
+      isDragging = false;
+    });
+
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      if (e.altKey) {   // Alt + wheel: spin speed (scroll up = faster); the spin itself is left alone
+        var wd = e.deltaY || e.deltaX;   // some systems turn the wheel into a horizontal scroll while Alt is held
+        if (wd) nudgeSpeed(wd < 0 ? 4 : -4);
+        return;
+      }
+      setSpin(false);
+      zoomBy(e.deltaY);
+      updateCameraPosition();
+    }, { passive: false });
+
+    var touchMode = null;
+    var lastDist = 0;
+
+    canvas.addEventListener('touchstart', function (e) {
+      setSpin(false);
+      if (e.touches.length === 1) {
+        touchMode = 'pan';
+        dragMoved = false;
+        lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        touchMode = 'pinch';
+        lastDist = touchDistance(e.touches);
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', function (e) {
+      if (touchMode === 'pan' && e.touches.length === 1) {
+        var dx = e.touches[0].clientX - lastX;
+        var dy = e.touches[0].clientY - lastY;
+        if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
+        panByPixels(dx, dy);
+        lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+        updateCameraPosition();
+      } else if (touchMode === 'pinch' && e.touches.length === 2) {
+        var d = touchDistance(e.touches);
+        zoomBy((lastDist - d) * 0.6);
+        lastDist = d;
+        updateCameraPosition();
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', function (e) {
+      if (touchMode === 'pan' && !dragMoved && e.changedTouches.length) {
+        handleClick(e.changedTouches[0].clientX, e.changedTouches[0].clientY, 16);
+      }
+      touchMode = null;
+    });
+
+    window.addEventListener('keydown', function (e) {
+      if (capturingAction) { captureKey(e); return; }   // Options is waiting for a new key
+      if (e.key === 'Escape') {   // closes an open window; from the main screen it opens Help (UI hidden or not)
+        if (!e.repeat) { if (openWin) hideWindow(true); else openHelp(); }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;   // browser shortcuts (Alt+Left = back, Ctrl+S = save) keep working
+      var id = actionForEvent(e);
+      if (!id) return;
+      // Faster / slower work in any state, even with the slider focused (its own arrow stepping
+      // is cancelled), so one press is always one step. Holding the key keeps going.
+      if (id === 'slower' || id === 'faster') { nudgeSpeed(id === 'faster' ? 4 : -4); e.preventDefault(); return; }
+      if (e.repeat) return;
+      if (id === 'spin') toggleSpin();
+      else if (id === 'recenter') resetView();
+      else if (id === 'hideui') setUIHidden(!uiHidden);
+      else if (id === 'options') { if (openWin === 'options') hideWindow(true); else openOptions(); }
+    });
+
+    // Enter opens the selected file, but never while a window is open, a window is opening a
+    // file picker, or a text field or button has focus (Enter there should do what it always does).
+    window.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.repeat || capturingAction || openWin) return;
+      var t = e.target, tag = t && t.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || (t && t.isContentEditable)) return;
+      if (selectedNode) { e.preventDefault(); openSelectedFile(); }
+    });
+  }
+
+  // ===== Selection / info panel =====
+  // Screen-space picking: project every star with the live camera and take the one
+  // whose centre is closest to the pointer, judged against its own on-screen size.
+  // Unlike a ray threshold this stays exact at any zoom. Brute force over all stars
+  // is a few ms per click.
+  function pickStar(clientX, clientY, minPx) {
+    camera.updateMatrixWorld(true);
+    var at = galaxyPoints.geometry.attributes;
+    var pos = at.position.array, sizes = at.aSize.array, folder = at.aIsFolder.array;
+    var rect = renderer.domElement.getBoundingClientRect();
+    var W = rect.width, H = rect.height, px = clientX - rect.left, py = clientY - rect.top;
+    var v = camera.matrixWorldInverse.elements, P = camera.projectionMatrix.elements;
+    var near = camera.near, cutoff = camera.far;
+    var best = -1, bestScore = Infinity;
+    for (var i = 0, n = pos.length / 3; i < n; i++) {
+      var x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      var d = -(v[2] * x + v[6] * y + v[10] * z + v[14]);   // distance in front of the camera
+      if (d < near || d > cutoff) continue;
+      var sx = (P[0] * (v[0] * x + v[4] * y + v[8] * z + v[12]) / d * 0.5 + 0.5) * W;
+      var sy = (0.5 - P[5] * (v[1] * x + v[5] * y + v[9] * z + v[13]) / d * 0.5) * H;
+      var dx = sx - px, dy = sy - py, dist2 = dx * dx + dy * dy;
+      var sprite = Math.min(sizes[i] * 240 / d, folder[i] > 0.5 ? 62 : 40);   // on-screen diameter, as in the shader
+      var reach = Math.max(minPx, sprite * 0.5);
+      if (dist2 > reach * reach) continue;
+      var score = dist2 / (reach * reach) + d * 1e-9;   // closest to its own centre wins; nearer breaks ties
+      if (score < bestScore) { bestScore = score; best = i; }
+    }
+    // The galaxy's centre (the bright core) is not a file but can be clicked too. It uses
+    // the same rule as a star: how close the click is, relative to its own on-screen size
+    // (the white ball, with a minimum so it is easy to hit from the overview). Returns -2.
+    var cd = -v[14];
+    if (cd > near) {
+      var ccx = (P[0] * v[12] / cd * 0.5 + 0.5) * W, ccy = (0.5 - P[5] * v[13] / cd * 0.5) * H;
+      var creach = Math.max(minPx + 3, 3.2 * P[5] * (H / 2) / cd * 1.15);   // 3.2 = radius of the core ball
+      var cdx = ccx - px, cdy = ccy - py, cdist2 = cdx * cdx + cdy * cdy;
+      if (cdist2 <= creach * creach) {
+        var cscore = cdist2 / (creach * creach) + cd * 1e-9;
+        if (cscore < bestScore) { bestScore = cscore; best = -2; }
+      }
+    }
+    return best;
+  }
+
+  function handleClick(clientX, clientY, minPx) {
+    if (!galaxyPoints) return;
+    var i = pickStar(clientX, clientY, minPx || 9);
+    if (i === -2 && currentCenter) { selectCenter(); return; }
+    var node = i >= 0 ? currentNodes[i] : null;
+    if (node) selectNode(node); else hideInfoPanel();
+  }
+
+  // "This PC/F:" - the names from the top of the tree down to the folder the galaxy is built around.
+  function centerLabel(root, eff) {
+    var parts = [root.name], node = root;
+    while (node !== eff && node.isDir && node.children.size === 1) {
+      node = Array.from(node.children.values())[0];
+      parts.push(node.name);
+    }
+    return parts.join('/');
+  }
+
+  function selectCenter() {
+    var panel = document.getElementById('info-panel');
+    panel.innerHTML =
+      '<button id="info-close" aria-label="Close">&times;</button>' +
+      '<div class="info-eyebrow" style="color:var(--gold)">GALAXY CENTER</div>' +
+      '<div class="info-name">' + escapeHtml(currentCenter.name) + '</div>';
+    panel.classList.remove('hidden');
+    document.getElementById('info-close').addEventListener('click', hideInfoPanel);
+    flyTo(currentCenter);   // back to the overview, centred (distance = the galaxy's fit radius)
+  }
+
+  function selectNode(node) {
+    showInfoPanel(node);
+    flyTo(node);
+  }
+
+  function flyTo(node) {
+    var targetPos = new THREE.Vector3(node.position[0], node.position[1], node.position[2]);
+    var base = node.isDir ? Math.max(16, (node.clusterR || 10) * 2.4) : Math.max(9, spherical.radius * 0.4);
+    animateCamera(targetPos, clamp(base, 6, 3000));
+  }
+
+  // The one camera animation (clicking a star, the galaxy center, Recenter): 850 ms, ease-in-out.
+  // The angles are only animated when the caller passes them.
+  function animateCamera(targetPos, endRadius, endPhi, endTheta) {
+    var startTarget = cameraTarget.clone();
+    var startRadius = spherical.radius, startPhi = spherical.phi, startTheta = spherical.theta;
+    var t0 = performance.now();
+    var duration = 850;
+
+    if (flyAnimId) cancelAnimationFrame(flyAnimId);
+    function step(now) {
+      var t = clamp((now - t0) / duration, 0, 1);
+      var ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      cameraTarget.lerpVectors(startTarget, targetPos, ease);
+      spherical.radius = startRadius + (endRadius - startRadius) * ease;
+      if (endPhi !== undefined) {
+        spherical.phi = startPhi + (endPhi - startPhi) * ease;
+        spherical.theta = startTheta + (endTheta - startTheta) * ease;
+      }
+      updateCameraPosition();
+      if (t < 1) flyAnimId = requestAnimationFrame(step);
+      else flyAnimId = null;
+    }
+    flyAnimId = requestAnimationFrame(step);
+  }
+
+  function cssColorForNode(node) {
+    var cat = node.isDir ? 'folder' : (node.category || categoryFor(node.name, false));
+    var c = CATEGORY_COLORS[cat] || CATEGORY_COLORS.other;
+    return 'rgb(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ')';
+  }
+
+  function showInfoPanel(node) {
+    selectedNode = node;
+    var panel = document.getElementById('info-panel');
+    var kind = node.isOverflow ? 'SUMMARY' : (node.isDir ? 'FOLDER' : 'FILE \u00b7 ' + (node.category || 'other').toUpperCase());
+    var canOpen = !node.isDir && !node.isOverflow && !node.isCenter;
+    var openButtonHtml = canOpen ? '<button class="info-open" id="info-open-btn" type="button">Open</button>' : '';
+    var extra = '';
+    if (node.isDir) {
+      extra = '<div class="info-row">' + (node.fileCount || 0).toLocaleString() + ' files &middot; ' + (node.folderCount || 0).toLocaleString() + ' folders</div>';
+    }
+    panel.innerHTML =
+      '<button id="info-close" aria-label="Close">&times;</button>' +
+      '<div class="info-eyebrow" style="color:' + cssColorForNode(node) + '">' + kind + '</div>' +
+      '<div class="info-name">' + escapeHtml(node.name) + '</div>' +
+      '<div class="info-path">' + escapeHtml(node.path || '/') + '</div>' +
+      '<div class="info-row">' + humanSize(node.size || 0) + '</div>' +
+      extra + openButtonHtml;
+    panel.classList.remove('hidden');
+    document.getElementById('info-close').addEventListener('click', hideInfoPanel);
+    if (canOpen) document.getElementById('info-open-btn').addEventListener('click', openSelectedFile);
+  }
+
+  function hideInfoPanel() {
+    var panel = document.getElementById('info-panel');
+    panel.classList.add('hidden');
+    selectedNode = null;
+  }
+
+  // ===== UI wiring =====
+  function buildLegend() {
+    var order = ['folder', 'image', 'video', 'audio', 'document', 'code', 'archive', 'other'];
+    var el = document.getElementById('legend');
+    el.innerHTML = order.map(function (cat) {
+      var c = CATEGORY_COLORS[cat];
+      var css = 'rgb(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ')';
+      return '<span class="legend-item"><span class="dot" style="background:' + css + ';color:' + css + '"></span>' + CATEGORY_LABELS[cat] + '</span>';
+    }).join('');
+  }
+
+  function updateStats(root, meta) {
+    var el = document.getElementById('stats');
+    var html = (root.fileCount || 0).toLocaleString() + ' files &middot; ' +
+      (root.folderCount || 0).toLocaleString() + ' folders &middot; ' +
+      humanSize(root.size || 0);
+    if (meta.truncated) html += ' &middot; <span class="warn">sampled (large folder)</span>';
+    el.innerHTML = html;
+  }
+
+  function updateModeLabel(text) {
+    document.getElementById('mode-label').textContent = text;
+  }
+
+  function showLoading(on, text) {
+    document.getElementById('loading').classList.toggle('hidden', !on);
+    if (on && text) updateLoadingText(text);
+  }
+
+  function updateLoadingText(text) {
+    document.getElementById('loading-text').textContent = text;
+  }
+
+  function loadTree(root, meta) {
+    currentMeta = meta;
+    var effRoot = layoutGalaxy(root);
+    var flat = flattenTree(effRoot);
+
+    if (flat.nodes.length === 0) {
+      showLoading(false);
+      window.alert('That folder looks empty \u2014 nothing to visualize. Showing the previous view.');
+      return;
+    }
+
+    currentNodes = flat.nodes;
+
+    if (galaxyPoints) {
+      scene.remove(galaxyPoints);
+      galaxyPoints.geometry.dispose();
+      galaxyPoints.material.dispose();
+    }
+    galaxyPoints = buildGalaxyPoints(flat);
+    scene.add(galaxyPoints);
+
+    // Frame the camera to whatever this tree actually needs - a five-file
+    // folder and an 800GB drive should not use the same starting distance.
+    currentFitRadius = clamp((effRoot.clusterR || 200) * 1.4, 55, 7000);
+    currentCenter = { name: centerLabel(root, effRoot), isDir: true, isCenter: true, position: [0, 0, 0], clusterR: currentFitRadius / 2.4 };
+    cameraTarget.set(0, 0, 0);
+    spherical.radius = currentFitRadius;
+    spherical.phi = 0.82;
+    spherical.theta = 0.6;
+    updateCameraPosition();
+
+    updateStats(root, meta);
+    hideInfoPanel();
+
+    if (meta.source === 'folder' || meta.source === 'map') {
+      lastRealRoot = root;
+      lastSourceLabel = meta.sourceLabel || 'Selected folder';
+      document.getElementById('btn-save-map').disabled = false;
+    }
+  }
+
+  function rootNameFromFiles(files) {
+    var first = files[0];
+    var rel = first.webkitRelativePath || first.name;
+    return rel.split('/')[0] || 'Selected folder';
+  }
+
+  // Recenter: the same smooth animation as clicking the galaxy center, and it eases the angles
+  // back too. Theta is unwrapped to the nearest equivalent of the default, so a galaxy that
+  // has been spinning for a while turns the short way round instead of unwinding whole turns.
+  function resetView() {
+    var turn = 2 * Math.PI, home = 0.6;
+    animateCamera(new THREE.Vector3(0, 0, 0), currentFitRadius, 0.82, home + turn * Math.round((spherical.theta - home) / turn));
+  }
+
+  function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    var t = clock.getElapsedTime();
+    if (galaxyPoints) galaxyPoints.material.uniforms.uTime.value = t;
+    var now = performance.now(), dt = Math.min(0.05, (now - lastFrameT) / 1000);
+    lastFrameT = now;
+    if (autoRotate && !flyAnimId) {   // the spin waits while the camera is flying
+      // 0.054 rad/s at 1x is the old 0.0009 rad per frame on a 60 Hz screen, but now
+      // the same on any refresh rate.
+      spherical.theta += 0.054 * spinSpeed * dt;
+      updateCameraPosition();
+    }
+    renderer.render(scene, camera);
+  }
+
+  function wireUI() {
+    var folderInput = document.getElementById('folder-input');
+    loadHotkeys();
+    renderHelpKeys();
+    renderHotkeyList();
+
+    document.getElementById('btn-folder').addEventListener('click', function () {
+      if (isBusy) return;
+      pickerPending = true;
+      showLoading(true, 'Opening folder picker\u2026');
+      folderInput.click();
+    });
+
+    // There is no browser event that fires DURING the native folder scan that
+    // happens after you confirm a folder and before 'change' fires - for a
+    // huge drive that gap can genuinely be long with nothing visible. This is
+    // a best-effort heuristic (window regains focus once the OS dialog
+    // closes) to at least explain the pause rather than leave it silent.
+    window.addEventListener('focus', function () {
+      if (!pickerPending) return;
+      setTimeout(function () {
+        if (pickerPending) {
+          updateLoadingText('Scanning folder\u2026 large drives can pause here with no visible progress \u2014 this part happens in your browser, not on this page');
+        }
+      }, 500);
+    });
+
+    document.getElementById('loading-cancel').addEventListener('click', function () {
+      loadGeneration++; // invalidates any chunked work still in flight
+      pickerPending = false;
+      isBusy = false;
+      showLoading(false);
+    });
+
+    folderInput.addEventListener('change', function (e) {
+      var wasPending = pickerPending;
+      pickerPending = false;
+      if (!wasPending) return; // Cancel was already clicked for this attempt; ignore the stale event
+
+      var files = e.target.files;
+      if (!files || !files.length) { isBusy = false; showLoading(false); return; }
+
+      if (files.length > LARGE_SELECTION_WARNING) {
+        showLoading(false);
+        var proceed = window.confirm(
+          'This selection contains ' + files.length.toLocaleString() + ' items \u2014 ' +
+          'that is a lot for a browser tab to process and may be slow. Continue anyway?'
+        );
+        if (!proceed) { isBusy = false; return; }
+      }
+
+      isBusy = true;
+      loadGeneration++;
+      var myGen = loadGeneration;
+      showLoading(true, 'Reading 0 / ' + files.length.toLocaleString() + ' files\u2026');
+
+      buildTreeFromFilesAsync(files, function (done, total) {
+        if (myGen !== loadGeneration) return;
+        updateLoadingText('Reading ' + done.toLocaleString() + ' / ' + total.toLocaleString() + ' files\u2026');
+      }, myGen).then(function (built) {
+        if (myGen !== loadGeneration) return;
+        updateLoadingText('Building galaxy\u2026');
+        setTimeout(function () {
+          if (myGen !== loadGeneration) return;
+          var label = rootNameFromFiles(files);
+          loadTree(built.root, { truncated: built.truncated, source: 'folder', sourceLabel: label });
+          updateModeLabel(label);
+          showLoading(false);
+          isBusy = false;
+        }, 20);
+      }).catch(function (err) {
+        if (myGen !== loadGeneration) return; // superseded by a newer request, not a real failure
+        showLoading(false);
+        isBusy = false;
+        window.alert('Could not read that folder in this browser. Try Chrome or Edge, or use the Demo Galaxy.');
+      });
+    });
+
+    document.getElementById('btn-demo').addEventListener('click', function () {
+      loadGeneration++; // invalidates any folder scan still in flight
+      var myGen = loadGeneration;
+      pickerPending = false;
+      isBusy = true;
+      showLoading(true, 'Building demo galaxy\u2026');
+      setTimeout(function () {
+        if (myGen !== loadGeneration) { isBusy = false; return; }
+        var kind = DEMO_KINDS[demoIndex++ % DEMO_KINDS.length];
+        var root = generateDemoTree(kind);
+        loadTree(root, { truncated: false, source: 'demo' });
+        updateModeLabel(DEMO_LABELS[kind]);
+        showLoading(false);
+        isBusy = false;
+      }, 30);
+    });
+
+    document.getElementById('btn-save-map').addEventListener('click', function () {
+      if (!lastRealRoot) return;
+      saveMapToFile(lastRealRoot, lastSourceLabel);
+    });
+
+    var mapInput = document.getElementById('map-input');
+    document.getElementById('btn-load-map').addEventListener('click', function () {
+      if (isBusy) return;
+      mapInput.click();
+    });
+
+    mapInput.addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      mapInput.value = ''; // allow re-selecting the same file later
+      if (!file) return;
+
+      loadGeneration++;
+      var myGen = loadGeneration;
+      isBusy = true;
+      pickerPending = false;
+      showLoading(true, 'Loading saved map\u2026');
+
+      loadMapFromFile(file).then(function (result) {
+        if (myGen !== loadGeneration) return;
+        loadTree(result.root, { truncated: false, source: 'map', sourceLabel: result.sourceLabel });
+        var when = result.savedAt ? ' (saved ' + new Date(result.savedAt).toLocaleDateString() + ')' : '';
+        updateModeLabel(result.sourceLabel + when);
+        showLoading(false);
+        isBusy = false;
+      }).catch(function (err) {
+        if (myGen !== loadGeneration) return;
+        showLoading(false);
+        isBusy = false;
+        window.alert('That does not look like a map file saved from this app.');
+      });
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', resetView);
+
+    document.getElementById('spin-speed').addEventListener('input', function () { setSpeed(Number(this.value)); });
+    setSpeed(Number(document.getElementById('spin-speed').value));
+    document.getElementById('btn-spin').addEventListener('click', toggleSpin);
+    document.getElementById('btn-hide-ui').addEventListener('click', function () { setUIHidden(!uiHidden); });
+    document.getElementById('btn-help').addEventListener('click', openHelp);
+    document.getElementById('help-close').addEventListener('click', closeHelp);
+    document.getElementById('help-overlay').addEventListener('click', function (e) { if (e.target === this) closeHelp(); });
+    document.getElementById('btn-options').addEventListener('click', openOptions);
+    document.getElementById('options-close').addEventListener('click', closeOptions);
+    document.getElementById('options-overlay').addEventListener('click', function (e) { if (e.target === this) closeOptions(); });
+    document.getElementById('hotkey-reset').addEventListener('click', resetHotkeys);
+    document.getElementById('notfound-close').addEventListener('click', closeNotFound);
+    document.getElementById('notfound-overlay').addEventListener('click', function (e) { if (e.target === this) closeNotFound(); });
+    document.getElementById('notfound-locate').addEventListener('click', relocateSelectedFile);
+    document.getElementById('relocate-input').addEventListener('change', function () {
+      var file = this.files && this.files[0];
+      this.value = '';
+      if (!file || !selectedNode) return;
+      selectedNode.fileRef = file;
+      closeNotFound();
+      openFileBlob(file);
+    });
+  }
+
+  function init() {
+    initScene();
+    buildLegend();
+    wireUI();
+    var firstKind = DEMO_KINDS[demoIndex++ % DEMO_KINDS.length];
+    loadTree(generateDemoTree(firstKind), { truncated: false, source: 'demo' });
+    updateModeLabel(DEMO_LABELS[firstKind]);
+  }
+
+  init();
+})();
 </script>
 </body>
 </html>
