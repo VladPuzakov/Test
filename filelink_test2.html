@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>file:// link test v2</title>
+<style>
+  body { background: #05060d; color: #e9ecf4; font: 15px/1.6 system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; }
+  h1 { font-size: 20px; }
+  .step { background: #12141f; border: 1px solid #2a2d3d; border-radius: 10px; padding: 18px 20px; margin: 18px 0; }
+  .step h2 { margin: 0 0 8px; font-size: 14px; color: #ffcf5c; text-transform: uppercase; letter-spacing: .04em; }
+  a.linktest { color: #7dd3fc; word-break: break-all; display: inline-block; margin-top: 8px; }
+  button { background: #7dd3fc; color: #05060d; border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  input { width: 100%; box-sizing: border-box; background: #1c1f2e; color: #e9ecf4; border: 1px solid #2a2d3d; border-radius: 8px; padding: 10px 12px; font-family: monospace; font-size: 13px; }
+  #origin { font-family: monospace; color: #ffcf5c; }
+  .warn { color: #ff8b8b; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .row button { flex: 0 0 auto; }
+</style>
+</head>
+<body>
+<h1>file:// link test v2 &mdash; type any path</h1>
+
+<p>This page's own address right now is: <span id="origin"></span></p>
+<p id="warning" class="warn"></p>
+
+<div class="step">
+  <h2>Any file or folder</h2>
+  <p>Paste or edit the full path below (Windows-style, e.g. <code>H:\Videos\clip.mp4</code> or already as a URL, e.g. <code>file:///H:/Videos/clip.mp4</code> &mdash; either is fine, this converts it for you).</p>
+  <input id="pathIn" value="H:\01.04.2026\00h00m00s-04h25m29s-kimknibble-480p30.ts" />
+  <div class="row">
+    <button id="updateLink">Update the link below</button>
+  </div>
+  <a class="linktest" id="liveLink" href="#">(click "Update the link" first)</a>
+  <p>Click that link directly, then separately try the button version:</p>
+  <div class="row">
+    <button id="btnOpen">Open the same path via window.open()</button>
+  </div>
+  <p id="result"></p>
+</div>
+
+<p style="color:#8a8fa3; font-size:13px;">For each file you try, tell me: did it play/open straight away, did it prompt a download, or did nothing happen \u2014 and for which of the two methods (the link, or the button).</p>
+
+<script>
+  document.getElementById('origin').textContent = window.location.href;
+  if (window.location.protocol !== 'file:') {
+    document.getElementById('warning').textContent = 'This page is NOT running as file:// right now. Save it to your computer and open it from there first.';
+  }
+  function toFileUrl(raw) {
+    raw = raw.trim();
+    if (/^file:\/\//i.test(raw)) return raw;
+    var p = raw.replace(/\\/g, '/').replace(/^\/+/, '');
+    return 'file:///' + p.split('/').map(encodeURIComponent).join('/').replace(/%3A/gi, ':');
+  }
+  function currentUrl() { return toFileUrl(document.getElementById('pathIn').value); }
+  document.getElementById('updateLink').addEventListener('click', function () {
+    var url = currentUrl();
+    var a = document.getElementById('liveLink');
+    a.href = url;
+    a.textContent = url;
+  });
+  document.getElementById('btnOpen').addEventListener('click', function () {
+    var url = currentUrl();
+    var win = window.open(url, '_blank');
+    document.getElementById('result').textContent = 'Tried: ' + url + ' \u2014 window.open() returned ' + (win ? 'a window reference.' : 'null (blocked immediately).') + ' Report what actually happened on screen.';
+  });
+  document.getElementById('updateLink').click();
+</script>
+</body>
+</html>
