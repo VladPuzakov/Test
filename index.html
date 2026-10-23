@@ -279,7 +279,7 @@
 <div id="ui">
   <div id="topbar">
     <div class="panel" id="title-block">
-      <h1>File Galaxy TEST1</h1>
+      <h1>File Galaxy TEST2</h1>
       <div class="sub"><span id="mode-label">Demo galaxy</span></div>
       <div id="stats"></div>
     </div>
@@ -1852,6 +1852,10 @@
 
     if (location.protocol !== 'file:') {
       win = window.open(URL.createObjectURL(file), '_blank');
+      // That tab runs on this site's own address, so without this an HTML or SVG file from the
+      // picked folder could reach back through window.opener and read this page, including
+      // every picked file. (From the drive the browser already blocks that.)
+      if (win) win.opener = null;
     } else {
       if (!folderPath) {
         folderPath = askFolderPath(rel.split('/')[0]);
