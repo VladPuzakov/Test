@@ -279,7 +279,7 @@
 <div id="ui">
   <div id="topbar">
     <div class="panel" id="title-block">
-      <h1>File Galaxy</h1>
+      <h1>File Galaxy TEST1</h1>
       <div class="sub"><span id="mode-label">Demo galaxy</span></div>
       <div id="stats"></div>
     </div>
@@ -1823,17 +1823,75 @@
     panel.classList.remove('hidden');
     document.getElementById('info-close').addEventListener('click', hideInfoPanel);
     if (isFileNode && node.fileRef) {
-      document.getElementById('info-open-btn').addEventListener('click', function () { openFileBlob(node.fileRef); });
+      document.getElementById('info-open-btn').addEventListener('click', function () { openFile(node.fileRef); });
     }
   }
 
   // Read-only: a file is only ever shown in a new tab, exactly like clicking a normal link to
   // it - nothing here can write, move, rename or delete anything on the person's computer.
-  function openFileBlob(file) {
-    var url = URL.createObjectURL(file);
-    var win = window.open(url, '_blank');
-    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  //
+  // How that tab is pointed at the file depends on where this page is running:
+  //
+  // Served from a server (http/https): a blob: link to the picked file. A page on a server cannot
+  // link to file:/// at all - the browser blocks it. The link is deliberately not revoked after a
+  // while: the audio/video player keeps requesting pieces of the file as you seek, and a revoked
+  // link makes that stall. The browser frees the link by itself when this page is closed.
+  //
+  // Opened from the drive (file://): the file's real file:/// address. A blob: link does not work
+  // here for audio/video: this page's origin is "null", so the link is blob:null/..., and the
+  // browser's own player requests that link a second time by itself and is refused ("Not allowed
+  // to load local resource"), so it just sits at 0:00. (Images and text are drawn straight from
+  // the first response, which is why those opened fine.) A real address also keeps Reload,
+  // bookmarks and "reopen closed tab" working. The one thing a page cannot know is where the
+  // picked folder lives on the disk - browsers only share paths inside it - so it is asked once.
+  var folderPath = null; // full path of the picked folder, e.g. C:/Users/me/Videos; asked once per picked folder
+
+  function openFile(file) {
+    var rel = file.webkitRelativePath || file.name;
+    var win, justAsked = false;
+
+    if (location.protocol !== 'file:') {
+      win = window.open(URL.createObjectURL(file), '_blank');
+    } else {
+      if (!folderPath) {
+        folderPath = askFolderPath(rel.split('/')[0]);
+        if (!folderPath) return;
+        justAsked = true;
+      }
+      win = window.open(fileUrlFor(folderPath, rel), '_blank');
+      // Typing the path can take long enough for the browser to stop counting the click as a
+      // request to open a tab; one more click on Open is all it needs then.
+      if (!win && justAsked) { window.alert('Folder saved. Click Open once more to open the file.'); return; }
+    }
     if (!win) window.alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+  }
+
+  // Asks for the picked folder's full path. Returns it as C:/Users/me/Videos or /Users/me/Videos
+  // (Windows' "Copy as path" works too, quotes and all), or null if cancelled or not a full path.
+  function askFolderPath(root) {
+    var answer = window.prompt(
+      'To open files at their real address, this page needs the full path of the folder you picked ("' + root + '").\n' +
+      'Browsers do not tell a page where a folder is. Paste it here, for example:\n' +
+      'C:\\Users\\me\\' + root + '    or    /Users/me/' + root);
+    if (answer === null) return null;
+    var p = answer.trim().replace(/^"(.*)"$/, '$1').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!/^([A-Za-z]:(\/|$)|\/)/.test(p)) {
+      window.alert('That does not look like a full path. It should start with a drive letter (C:\\...) or a slash (/Users/...).');
+      return null;
+    }
+    var last = p.slice(p.lastIndexOf('/') + 1);
+    if (last.toLowerCase() !== root.toLowerCase() &&
+        !window.confirm('You picked a folder called "' + root + '", but this path ends in "' + last + '". Use it anyway?')) return null;
+    return p;
+  }
+
+  // C:/Users/me/Videos + Videos/sub dir/a#1.mp4  ->  file:///C:/Users/me/Videos/sub%20dir/a%231.mp4
+  // (rel starts with the picked folder's own name, which folder already ends with)
+  function fileUrlFor(folder, rel) {
+    var parts = (folder + '/' + rel.split('/').slice(1).join('/')).split('/').map(function (seg, i) {
+      return (i === 0 && /^[A-Za-z]:$/.test(seg)) ? seg : encodeURIComponent(seg);
+    });
+    return 'file://' + (parts[0] === '' ? '' : '/') + parts.join('/');
   }
 
   function hideInfoPanel() {
@@ -2001,6 +2059,7 @@
       isBusy = true;
       loadGeneration++;
       var myGen = loadGeneration;
+      folderPath = null; // a new folder was picked: where it lives has to be asked again
       showLoading(true, 'Reading 0 / ' + files.length.toLocaleString() + ' files\u2026');
 
       buildTreeFromFilesAsync(files, function (done, total) {
